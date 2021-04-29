@@ -84,7 +84,7 @@ class weapon_hlpython : ScriptBasePlayerWeaponEntity
 		g_Game.PrecacheModel( "models/hlclassic/w_357.mdl" );
 		g_Game.PrecacheModel( "models/hlclassic/p_357.mdl" );
 
-		g_Game.PrecacheModel( "models/hlclassic/w_357ammobox.mdl" );
+		//g_Game.PrecacheModel( "models/hlclassic/w_357ammobox.mdl" );
 		g_SoundSystem.PrecacheSound( "hlclassic/items/9mmclip1.wav" );
 
 		g_SoundSystem.PrecacheSound( "hlclassic/weapons/357_reload1.wav" );
