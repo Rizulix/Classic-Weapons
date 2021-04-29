@@ -31,6 +31,5 @@ array<ItemMapping@> CLASSIC_WEAPONS_LIST =
 
 ## Credits
 
-Code for the python  was based on [Valve Half-Life SDK](https://github.com/ValveSoftware/halflife).
-
-Code for the Opposing Force weapons was based on [FreeSlave Half-Life SDK](https://github.com/FreeSlave/hlsdk-xash3d).
+* Code for the python  was based on [Valve Half-Life SDK](https://github.com/ValveSoftware/halflife).
+* Code for the Opposing Force weapons was based on [FreeSlave Half-Life SDK](https://github.com/FreeSlave/hlsdk-xash3d).
