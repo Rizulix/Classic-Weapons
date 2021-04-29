@@ -1,4 +1,3 @@
-
 #include "weapon_hlpython"
 #include "weapon_ofm249"
 #include "weapon_ofsniperrifle"
