@@ -3,7 +3,7 @@
 #include "weapon_ofsniperrifle"
 #include "weapon_ofshockrifle"
 
-void RegisterAll()
+void RegisterClassicWeapons()
 {
 	RegisterHLPython();
 	RegisterOFM249();
