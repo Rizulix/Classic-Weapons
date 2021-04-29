@@ -184,7 +184,7 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 		m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
 		self.pev.effects |= EF_MUZZLEFLASH;
 
-		if( self.m_iClip == 1 )
+		if( self.m_iClip == 0 )
 		{
 			self.SendWeaponAnim( SNIPER_FIRELASTROUND );
 		}
