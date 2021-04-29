@@ -10,8 +10,8 @@
 
 The MaxAmmo and MaxClip of the m249 are the same as the default version, the same goes for the shockrifle, this is to avoid overwriting the values of the default weapons.
 
-I recommend using in conjunction with an ItemMapper such as [Outerbeast's classic_weapons.as](https://github.com/Outerbeast/Entities-and-Gamemodes/blob/master/classic_weapons.as), in this case follow step 2 of the installation guide but add `RegisterClassicWeapons();` in the Enable function and replace the array<ItemMapping@> CLASSIC_WEAPONS_LIST
-with the following
+I recommend using in conjunction with an ItemMapper such as [Outerbeast's classic_weapons.as](https://github.com/Outerbeast/Entities-and-Gamemodes/blob/master/classic_weapons.as), in this case follow step 2 of the installation guide but add `RegisterClassicWeapons();` in the Enable function and replace the `array<ItemMapping@> CLASSIC_WEAPONS_LIST`
+with the following:
 ```
 array<ItemMapping@> CLASSIC_WEAPONS_LIST = 
 {
