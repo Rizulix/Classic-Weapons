@@ -12,5 +12,5 @@ The MaxAmmo and MaxClip of the m249 are the same as the default version, similar
 
 ## Credits
 
-Code for the python  was based on [Valve Half-Life SDK](https://github.com/ValveSoftware/halflife)
-Code for the Opposing Force weapons was based on [FreeSlave Half-Life SDK](https://github.com/FreeSlave/hlsdk-xash3d)
+Code for the python  was based on [Valve Half-Life SDK](https://github.com/ValveSoftware/halflife).
+Code for the Opposing Force weapons was based on [FreeSlave Half-Life SDK](https://github.com/FreeSlave/hlsdk-xash3d).
