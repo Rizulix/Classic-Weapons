@@ -1,5 +1,5 @@
 /* 
-* The original Half-Life version of the eagle
+* The Opposing Force version of the eagle
 */
 
 namespace OF_EAGLE
