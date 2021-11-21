@@ -43,6 +43,7 @@ int MAX_CLIP		= 5;
 int DEFAULT_GIVE	= MAX_CLIP;
 int WEIGHT		= 10;
 int FLAGS		= 0;
+uint DAMAGE		= uint(g_EngineFuncs.CVarGetFloat("sk_plr_762_bullet"));
 uint SLOT		= 5;
 uint POSITION		= 5;
 string AMMO_TYPE 	= "m40a1";
@@ -63,13 +64,9 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 	void ToggleZoom( int fov )
 	{
 		if( m_pPlayer.pev.fov != 0 )
-		{
 			m_pPlayer.pev.fov = m_pPlayer.m_iFOV = 0;
-		}
 		else if( m_pPlayer.pev.fov != fov )
-		{
 			m_pPlayer.pev.fov = m_pPlayer.m_iFOV = fov;
-		}
 	}
 
 	void Spawn()
@@ -169,7 +166,7 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 		Vector vecSrc	 = m_pPlayer.GetGunPosition();
 		Vector vecAiming = m_pPlayer.GetAutoaimVector( AUTOAIM_2DEGREES );
 
-		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, g_vecZero, 8192, BULLET_PLAYER_SNIPER );
+		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, g_vecZero, 8192, BULLET_PLAYER_SNIPER, 0 );
 		g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[0], Math.RandomFloat(0.9,1.0), ATTN_NORM, 0, 98 + Math.RandomLong(0,3) );
 
 		if( self.m_iClip <= 0 && m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
@@ -192,7 +189,7 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 
 		g_Utility.GetCircularGaussianSpread( x, y );
 
-		Vector vecDir = vecAiming + x * g_vecZero * g_Engine.v_right + y * g_vecZero * g_Engine.v_up;
+		Vector vecDir = vecAiming + x * g_vecZero.x * g_Engine.v_right + y * g_vecZero.y * g_Engine.v_up;
 		Vector vecEnd = vecSrc + vecDir * 8192;
 
 		g_Utility.TraceLine( vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr );
@@ -202,6 +199,9 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 			if( tr.pHit !is null )
 			{
 				CBaseEntity@ pHit = g_EntityFuncs.Instance( tr.pHit );
+
+				g_SoundSystem.PlayHitSound( tr, vecSrc, vecEnd, BULLET_PLAYER_SNIPER );
+				g_Utility.BubbleTrail( vecSrc, tr.vecEndPos, int((8192 * tr.flFraction)/64.0) );
 
 				if( pHit is null || pHit.IsBSPModel() )
 					g_WeaponFuncs.DecalGunshot( tr, BULLET_PLAYER_SNIPER );
@@ -230,7 +230,7 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 		ToggleZoom( 0 );
 		if( self.m_iClip <= 0 )
 		{
-			SetThink( ThinkFunction( FinishAnim ) );
+			SetThink( ThinkFunction( this.FinishAnim ) );
 			self.pev.nextthink = WeaponTimeBase() + 2.324;
 		}
 		self.DefaultReload( MAX_CLIP, self.m_iClip > 0 ? SNIPERRIFLE_RELOAD3 : SNIPERRIFLE_RELOAD1, 2.324 );
@@ -292,9 +292,7 @@ string GetName()
 void Register()
 {
 	if( !g_CustomEntityFuncs.IsCustomEntity( GetAmmoName() ) )
-	{
 		g_CustomEntityFuncs.RegisterCustomEntity( "OF_SNIPERRIFLE::ammo_of762", GetAmmoName() );
-	}
 
 	if( !g_CustomEntityFuncs.IsCustomEntity( GetName() ) )
 	{

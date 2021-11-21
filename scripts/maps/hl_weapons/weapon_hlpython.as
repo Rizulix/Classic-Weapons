@@ -60,13 +60,9 @@ class weapon_hlpython : ScriptBasePlayerWeaponEntity
 	void ToggleZoom( int fov )
 	{
 		if( m_pPlayer.pev.fov != 0 )
-		{
 			m_pPlayer.pev.fov = m_pPlayer.m_iFOV = 0;
-		}
 		else if( m_pPlayer.pev.fov != fov )
-		{
 			m_pPlayer.pev.fov = m_pPlayer.m_iFOV = fov;
-		}
 	}
 
 	void Spawn()
@@ -161,7 +157,7 @@ class weapon_hlpython : ScriptBasePlayerWeaponEntity
 		Vector vecSrc	 = m_pPlayer.GetGunPosition();
 		Vector vecAiming = m_pPlayer.GetAutoaimVector( AUTOAIM_10DEGREES );
 
-		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, VECTOR_CONE_1DEGREES, 8192, BULLET_PLAYER_357 );
+		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, VECTOR_CONE_1DEGREES, 8192, BULLET_PLAYER_357, 0 );
 		g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[Math.RandomLong(0,1)], Math.RandomFloat(0.8,0.9), ATTN_NORM, 0, PITCH_NORM );
 
 		if( self.m_iClip <= 0 && m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
@@ -197,6 +193,9 @@ class weapon_hlpython : ScriptBasePlayerWeaponEntity
 			{
 				CBaseEntity@ pHit = g_EntityFuncs.Instance( tr.pHit );
 
+				g_SoundSystem.PlayHitSound( tr, vecSrc, vecEnd, BULLET_PLAYER_357 );
+				g_Utility.BubbleTrail( vecSrc, tr.vecEndPos, int((8192 * tr.flFraction)/64.0) );
+
 				if( pHit is null || pHit.IsBSPModel() )
 					g_WeaponFuncs.DecalGunshot( tr, BULLET_PLAYER_357 );
 			}
@@ -224,7 +223,7 @@ class weapon_hlpython : ScriptBasePlayerWeaponEntity
 			return;
 
 		ToggleZoom( 0 );
-		SetThink( ThinkFunction( PlayReloadSound ) );
+		SetThink( ThinkFunction( this.PlayReloadSound ) );
 		self.pev.nextthink = WeaponTimeBase() + 1.5;
 		self.DefaultReload( MAX_CLIP, PYTHON_RELOAD, 2.0, GetBodygroup() );
 		self.m_flTimeWeaponIdle = WeaponTimeBase() + 3.0;

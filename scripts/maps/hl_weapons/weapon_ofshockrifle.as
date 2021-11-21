@@ -46,7 +46,7 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
 		get const	{ return cast<CBasePlayer@>( self.m_hPlayer.GetEntity() ); }
 		set		{ self.m_hPlayer = EHandle( @value ); }
 	}
-	private array<CBeam@> m_pBeam( 3 );
+	private EHandle[] m_hBeam( 3 );
 	private float m_flRechargeTime;
 
 	float WeaponTimeBase()
@@ -59,21 +59,23 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
 		if( IsMultiplayer )
 			return;
 
-		for( uint i = 0; i < m_pBeam.length(); i++ )
+		CBeam@ m_pBeam;
+		for( uint i = 0; i < m_hBeam.length(); i++ )
 		{
-			if( m_pBeam[i] is null )
-				@m_pBeam[i] = g_EntityFuncs.CreateBeam( BEAM_SPR, 16 );
+			if( !m_hBeam[i] )
+				m_hBeam[i] = EHandle( @g_EntityFuncs.CreateBeam( BEAM_SPR, 16 ) );
 
-			m_pBeam[i].EntsInit( m_pPlayer.entindex(), m_pPlayer.entindex() );
-			m_pBeam[i].SetStartAttachment( 1 );
-			m_pBeam[i].SetEndAttachment( 2+i );
-			m_pBeam[i].SetNoise( 75 );
-			m_pBeam[i].pev.scale = 10.0;
-			m_pBeam[i].SetColor( 0, 253, 253 );
-			m_pBeam[i].SetScrollRate( 30 );
-			m_pBeam[i].SetBrightness( 190 );
+			@m_pBeam = cast<CBeam@>( m_hBeam[i].GetEntity() );
+			m_pBeam.EntsInit( m_pPlayer.entindex(), m_pPlayer.entindex() );
+			m_pBeam.SetStartAttachment( 1 );
+			m_pBeam.SetEndAttachment( 2+i );
+			m_pBeam.SetNoise( 75 );
+			m_pBeam.pev.scale = 10.0;
+			m_pBeam.SetColor( 0, 253, 253 );
+			m_pBeam.SetScrollRate( 30 );
+			m_pBeam.SetBrightness( 190 );
 		}
-		SetThink( ThinkFunction( ClearBeams ) );
+		SetThink( ThinkFunction( this.ClearBeams ) );
 		self.pev.nextthink = WeaponTimeBase() + 0.08;
 	}
 
@@ -82,12 +84,12 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
 		if( IsMultiplayer )
 			return;
 
-		for( uint i = 0; i < m_pBeam.length(); i++ )
+		for( uint i = 0; i < m_hBeam.length(); i++ )
 		{
-			if( m_pBeam[i] !is null )
+			if( m_hBeam[i] )
 			{
-				g_EntityFuncs.Remove( m_pBeam[i] );
-				@m_pBeam[i] = @null;
+				g_EntityFuncs.Remove( m_hBeam[i].GetEntity() );
+				m_hBeam[i] = EHandle( @null );
 			}
 		}
 		SetThink( null );
@@ -185,6 +187,8 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
 			m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType, 0 );
 			return;
 		}
+
+		self.Reload();
 
 		if( m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
 			return;

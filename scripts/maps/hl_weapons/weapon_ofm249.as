@@ -23,13 +23,7 @@ string W_MODEL		= "models/hlclassic/w_saw.mdl";
 string V_MODEL		= "models/hlclassic/v_saw.mdl";
 string P_MODEL		= "models/hlclassic/p_saw.mdl";
 string A_MODEL		= "models/hlclassic/w_saw_clip.mdl";
-string S_MODEL		= "models/hlclassic/saw_shell.mdl"; /*This cannot be changed with .gmr, must be called beforehand and in the same function where RegisterClassicWeapons(); is found. Ex: 
-void MapInit()
-{
-	OF_M249::S_MODEL = "models/mycustommodel.mdl";
-	RegisterClassicWeapons();
-}
-*/
+string S_MODEL		= "models/hlclassic/saw_shell.mdl"; // Change this manually in MapInit function, ex: OF_M249::S_MODEL = "models/mymodel.mdl";
 // Sprites
 string SPR_DIR		= "hl_weapons/";
 // Sounds
@@ -195,7 +189,7 @@ class weapon_ofm249 : ScriptBasePlayerWeaponEntity
 		else
 			vecSpread = IsMultiplayer ? VECTOR_CONE_6DEGREES : VECTOR_CONE_2DEGREES;
 
-		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, vecSpread, 8192, BULLET_PLAYER_SAW );
+		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, vecSpread, 8192, BULLET_PLAYER_SAW, 2 );
 		g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[0], VOL_NORM, ATTN_NORM, 0, 94 + Math.RandomLong(0,15) );
 
 		Vector vecShellVelocity, vecShellOrigin;
@@ -238,14 +232,10 @@ class weapon_ofm249 : ScriptBasePlayerWeaponEntity
 			const float flZTreshold = -( flNewZVel + 100.0 );
 
 			if( vecVelocity.x > flZTreshold )
-			{
 				m_pPlayer.pev.velocity.x -= vecInvPushDir.x;
-			}
 
 			if( vecVelocity.y > flZTreshold )
-			{
 				m_pPlayer.pev.velocity.y -= vecInvPushDir.y;
-			}
 
 			m_pPlayer.pev.velocity.z -= vecInvPushDir.z;
 		}
@@ -266,6 +256,9 @@ class weapon_ofm249 : ScriptBasePlayerWeaponEntity
 			{
 				CBaseEntity@ pHit = g_EntityFuncs.Instance( tr.pHit );
 
+				g_SoundSystem.PlayHitSound( tr, vecSrc, vecEnd, BULLET_PLAYER_SAW );
+				g_Utility.BubbleTrail( vecSrc, tr.vecEndPos, int((8192 * tr.flFraction)/64.0) );
+
 				if( pHit is null || pHit.IsBSPModel() )
 					g_WeaponFuncs.DecalGunshot( tr, BULLET_PLAYER_SAW );
 			}
@@ -283,7 +276,7 @@ class weapon_ofm249 : ScriptBasePlayerWeaponEntity
 		if( self.m_iClip == MAX_CLIP || m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
 			return;
 
-		SetThink( ThinkFunction( FinishAnim ) );
+		SetThink( ThinkFunction( this.FinishAnim ) );
 		self.pev.nextthink = WeaponTimeBase() + 1.5;
 		self.DefaultReload( MAX_CLIP, M249_RELOAD_START, 1.0, GetBodygroup() );
 		self.m_flNextPrimaryAttack = WeaponTimeBase() + 3.78;
@@ -354,9 +347,7 @@ string GetName()
 void Register()
 {
 	if( !g_CustomEntityFuncs.IsCustomEntity( GetAmmoName() ) )
-	{
 		g_CustomEntityFuncs.RegisterCustomEntity( "OF_M249::ammo_of556", GetAmmoName() );
-	}
 
 	if( !g_CustomEntityFuncs.IsCustomEntity( GetName() ) )
 	{

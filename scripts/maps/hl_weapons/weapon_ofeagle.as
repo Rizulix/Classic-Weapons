@@ -24,13 +24,7 @@ enum eagle_e
 string W_MODEL		= "models/hlclassic/w_desert_eagle.mdl";
 string V_MODEL		= "models/hlclassic/v_desert_eagle.mdl";
 string P_MODEL		= "models/hlclassic/p_desert_eagle.mdl";
-string S_MODEL		= "models/hlclassic/shell.mdl"; /*This cannot be changed with .gmr, must be changed beforehand and in the same function where RegisterClassicWeapons(); is found. Ex: 
-void MapInit()
-{
-	OF_EAGLE::S_MODEL = "models/mycustommodel.mdl";
-	RegisterClassicWeapons();
-}
-*/
+string S_MODEL		= "models/hlclassic/shell.mdl"; // Change this manually in MapInit
 // Sprites
 string SPR_DIR		= "hl_weapons/";
 string LSR_SPR		= "sprites/laserdot.spr";
@@ -48,6 +42,7 @@ int MAX_CLIP		= 7;
 int DEFAULT_GIVE	= MAX_CLIP;
 int WEIGHT		= 15;
 int FLAGS		= 0;
+uint DAMAGE		= uint(g_EngineFuncs.CVarGetFloat("sk_plr_357_bullet")*0.85); // SC:2/3 of the magnum; OF:85% of the magnum, based on skillopfor.cfg
 uint SLOT		= 1;
 uint POSITION		= 7;
 string AMMO_TYPE 	= "357";
@@ -59,7 +54,12 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 		get const	{ return cast<CBasePlayer@>( self.m_hPlayer.GetEntity() ); }
 		set		{ self.m_hPlayer = EHandle( @value ); }
 	}
-	private CSprite@ m_pLaser;
+	private EHandle m_hLaser;
+	private CSprite@ m_pLaser
+	{
+		get const	{ return cast<CSprite@>( m_hLaser.GetEntity() ); }
+		set		{ m_hLaser = EHandle( @value ); }
+	};
 	private bool m_bLaserActive = false, m_bSpotVisible = false;
 	private int m_iShell;
 
@@ -110,7 +110,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 		if( m_pLaser !is null && m_bLaserActive )
 		{
 			m_pLaser.pev.effects |= EF_NODRAW;
-			SetThink( ThinkFunction( RedrawLaser ) );
+			SetThink( ThinkFunction( this.RedrawLaser ) );
 			self.pev.nextthink = g_Engine.time + time;
 		}
 	}
@@ -235,7 +235,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 		Vector vecAiming = m_pPlayer.GetAutoaimVector( AUTOAIM_10DEGREES );
 		Vector vecSpread = m_bLaserActive ? Vector(0.001,0.001,0.001) : Vector(0.1,0.1,0.1);
 
-		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, vecSpread, 8192, BULLET_PLAYER_EAGLE );
+		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, vecSpread, 8192, BULLET_PLAYER_CUSTOMDAMAGE, 0, DAMAGE );
 		g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[0], Math.RandomFloat(0.92,1.0), ATTN_NORM, 0, 98 + Math.RandomLong(0,3) );
 
 		HideLaser( 0.6 );
@@ -278,6 +278,9 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 			if( tr.pHit !is null )
 			{
 				CBaseEntity@ pHit = g_EntityFuncs.Instance( tr.pHit );
+
+				g_SoundSystem.PlayHitSound( tr, vecSrc, vecEnd, BULLET_PLAYER_EAGLE );
+				g_Utility.BubbleTrail( vecSrc, tr.vecEndPos, int((8192 * tr.flFraction)/64.0) );
 
 				if( pHit is null || pHit.IsBSPModel() )
 					g_WeaponFuncs.DecalGunshot( tr, BULLET_PLAYER_EAGLE );
