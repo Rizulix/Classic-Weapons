@@ -43,7 +43,6 @@ int MAX_CLIP		= 5;
 int DEFAULT_GIVE	= MAX_CLIP;
 int WEIGHT		= 10;
 int FLAGS		= 0;
-uint DAMAGE		= uint(g_EngineFuncs.CVarGetFloat("sk_plr_762_bullet"));
 uint SLOT		= 5;
 uint POSITION		= 5;
 string AMMO_TYPE 	= "m40a1";
