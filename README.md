@@ -90,5 +90,7 @@ Change its value with `as_command` e.g.:
 #### Note: To modify the values you must at least have access to cheats.
 
 ## Credits
+
 * Code format based on [KernCore's Custom Weapon Projects](https://github.com/KernCore91#sven-co-op-plugins)
+
 * All weapons code was ported/based from SamVanheer's [Half-Life Unified SDK](https://github.com/SamVanheer/halflife-unified-sdk), [Half-Life Updated](https://github.com/SamVanheer/halflife-updated) and [Half-Life Op4 Updated](https://github.com/SamVanheer/halflife-op4-updated)
