@@ -1,375 +1,379 @@
-/* 
-* The Opposing Force version of the eagle
-*/
+/*
+ * The Opposing Force version of the eagle
+ */
 
-namespace OF_EAGLE
+#include 'utils'
+
+namespace CEagle
 {
 
 enum eagle_e
 {
-	EAGLE_IDLE1 = 0,
-	EAGLE_IDLE2,
-	EAGLE_IDLE3,
-	EAGLE_IDLE4,
-	EAGLE_IDLE5,
-	EAGLE_SHOOT,
-	EAGLE_SHOOT_EMPTY,
-	EAGLE_RELOAD_NOSHOT,
-	EAGLE_RELOAD,
-	EAGLE_DRAW,
-	EAGLE_HOLSTER
+  IDLE1 = 0,
+  IDLE2,
+  IDLE3,
+  IDLE4,
+  IDLE5,
+  SHOOT,
+  SHOOT_EMPTY,
+  RELOAD_NOSHOT,
+  RELOAD,
+  DRAW,
+  HOLSTER
 };
 
-// Models
-string W_MODEL		= "models/hlclassic/w_desert_eagle.mdl";
-string V_MODEL		= "models/hlclassic/v_desert_eagle.mdl";
-string P_MODEL		= "models/hlclassic/p_desert_eagle.mdl";
-string S_MODEL		= "models/hlclassic/shell.mdl"; // Change this manually in MapInit
-// Sprites
-string SPR_DIR		= "hl_weapons/";
-string LSR_SPR		= "sprites/laserdot.spr";
-// Sounds
-array<string> Sounds = { 
-		"weapons/desert_eagle_fire.wav",
-		"weapons/desert_eagle_sight.wav",
-		"weapons/desert_eagle_sight2.wav",
-		"hlclassic/weapons/desert_eagle_reload.wav",
-		"hlclassic/weapons/357_cock1.wav"
-};
 // Weapon information
-int MAX_CARRY		= 36;
-int MAX_CLIP		= 7;
-int DEFAULT_GIVE	= MAX_CLIP;
-int WEIGHT		= 15;
-int FLAGS		= 0;
-uint DAMAGE		= uint(g_EngineFuncs.CVarGetFloat("sk_plr_357_bullet")*0.85); // SC:2/3 of the magnum; OF:85% of the magnum, based on skillopfor.cfg
-uint SLOT		= 1;
-uint POSITION		= 7;
-string AMMO_TYPE 	= "357";
+const int MAX_CARRY    = 36;
+const int MAX_CLIP     = 7;
+const int DEFAULT_GIVE = MAX_CLIP;
+const int WEIGHT       = 15;
 
-class weapon_ofeagle : ScriptBasePlayerWeaponEntity
+string SHELL_MDL = 'models/hlclassic/shell.mdl';
+
+class weapon_ofeagle : ScriptBasePlayerWeaponEntity, WeaponUtils
 {
-	private CBasePlayer@ m_pPlayer
-	{
-		get const	{ return cast<CBasePlayer@>( self.m_hPlayer.GetEntity() ); }
-		set		{ self.m_hPlayer = EHandle( @value ); }
-	}
-	private EHandle m_hLaser;
-	private CSprite@ m_pLaser
-	{
-		get const	{ return cast<CSprite@>( m_hLaser.GetEntity() ); }
-		set		{ m_hLaser = EHandle( @value ); }
-	};
-	private bool m_bLaserActive = false, m_bSpotVisible = false;
-	private int m_iShell;
+  private CBasePlayer@ m_pPlayer
+  {
+    get const { return cast<CBasePlayer>(self.m_hPlayer.GetEntity()); }
+    set       { self.m_hPlayer = EHandle(@value); }
+  }
+  // Yeah... no custom eagle_laser (laser_spot)
+  private EHandle m_hLaser;
+  private CSprite@ m_pLaser
+  {
+    get const { return cast<CSprite>(m_hLaser.GetEntity()); }
+    set       { m_hLaser = EHandle(@value); }
+  }
+  private CScheduledFunction@ laser_nextthink;
+  // Starts with the laser active as well as the SC version
+  private bool m_bLaserActive = true;
+  private bool m_bSpotVisible;
+  private int m_iShell;
 
-	float WeaponTimeBase()
-	{
-		return g_Engine.time;
-	}
+  void Spawn()
+  {
+    Precache();
+    g_EntityFuncs.SetModel(self, self.GetW_Model('models/hlclassic/w_desert_eagle.mdl'));
+    self.m_iDefaultAmmo = DEFAULT_GIVE;
+    self.FallInit();
+  }
 
-	void GetDefaultShellInfo( CBasePlayer@ pPlayer, Vector& out ShellVelocity, Vector& out ShellOrigin, float forwardScale, float upScale, float rightScale )
-	{
-		Vector vecForward, vecRight, vecUp;
+  void Precache()
+  {
+    self.PrecacheCustomModels();
+    g_Game.PrecacheModel('models/hlclassic/v_desert_eagle.mdl');
+    g_Game.PrecacheModel('models/hlclassic/w_desert_eagle.mdl');
+    g_Game.PrecacheModel('models/hlclassic/p_desert_eagle.mdl');
 
-		g_EngineFuncs.AngleVectors( pPlayer.pev.v_angle, vecForward, vecRight, vecUp );
+    g_Game.PrecacheModel('sprites/laserdot.spr');
 
-		const float fR = Math.RandomFloat( 50.0, 70.0 );
-		const float fU = Math.RandomFloat( 100.0, 150.0 );
+    m_iShell = g_Game.PrecacheModel(SHELL_MDL);
 
-		for( int i = 0; i < 3; ++i )
-		{
-			ShellVelocity[i] = pPlayer.pev.velocity[i] + vecRight[i] * fR + vecUp[i] * fU + vecForward[i] * 25;
-			ShellOrigin[i]   = pPlayer.pev.origin[i] + pPlayer.pev.view_ofs[i] + vecUp[i] * upScale + vecForward[i] * forwardScale + vecRight[i] * rightScale;
-		}
-	}
+    g_SoundSystem.PrecacheSound('weapons/desert_eagle_fire.wav');
+    g_SoundSystem.PrecacheSound('hlclassic/weapons/desert_eagle_reload.wav'); // default viewmodel; sequence: 7, 8; frame: 1; event 5004
+    g_SoundSystem.PrecacheSound('weapons/desert_eagle_sight.wav');
+    g_SoundSystem.PrecacheSound('weapons/desert_eagle_sight2.wav');
+    g_SoundSystem.PrecacheSound('hlclassic/weapons/357_cock1.wav');
 
-	void CreateLaserSpot()
-	{
-		if( m_pLaser is null )
-			@m_pLaser = g_EntityFuncs.CreateSprite( LSR_SPR, g_vecZero, false );
+    g_Game.PrecacheGeneric('sound/hlclassic/weapons/desert_eagle_reload.wav');
 
-		m_pLaser.pev.movetype = MOVETYPE_NONE;
-		m_pLaser.pev.solid = SOLID_NOT;
-		m_pLaser.pev.rendermode = kRenderGlow;
-		m_pLaser.pev.renderfx = kRenderFxNoDissipation;
-		m_pLaser.pev.renderamt = 255;
-		m_pLaser.pev.scale = 0.5;
-	}
+    g_Game.PrecacheGeneric('sprites/hl_weapons/' + pev.classname + '.txt');
+  }
 
-	void RedrawLaser()
-	{
-		if( m_pLaser !is null )
-			m_pLaser.pev.effects &= ~EF_NODRAW;
+  bool GetItemInfo(ItemInfo& out info)
+  {
+    info.iMaxAmmo1 = MAX_CARRY;
+    info.iMaxAmmo2 = -1;
+    info.iAmmo1Drop = MAX_CLIP;
+    info.iAmmo2Drop = -1;
+    info.iMaxClip = MAX_CLIP;
+    info.iFlags = 0;
+    info.iSlot = 1;
+    info.iPosition = 7;
+    info.iId = g_ItemRegistry.GetIdForName(pev.classname);
+    info.iWeight = WEIGHT;
 
-		SetThink( null );
-	}
+    return true;
+  }
 
-	void HideLaser( float time )
-	{
-		if( m_pLaser !is null && m_bLaserActive )
-		{
-			m_pLaser.pev.effects |= EF_NODRAW;
-			SetThink( ThinkFunction( this.RedrawLaser ) );
-			self.pev.nextthink = g_Engine.time + time;
-		}
-	}
+  bool AddToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (!BaseClass.AddToPlayer(pPlayer))
+      return false;
 
-	void UpdateLaser()
-	{
-		if( m_bLaserActive && m_bSpotVisible )
-		{
-			if( m_pLaser is null )
-			{
-				CreateLaserSpot();
-				g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[1], VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
-			}
+    NetworkMessage message(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
+      message.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
+    message.End();
 
-			Vector vecSrc = m_pPlayer.GetGunPosition();
-			Vector vecEnd = vecSrc + g_Engine.v_forward * 8192;
+    return true;
+  }
 
-			TraceResult tr;
-			g_Utility.TraceLine( vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr );
-			g_EntityFuncs.SetOrigin( m_pLaser, tr.vecEndPos );
-		}
-	}
+  bool PlayEmptySound()
+  {
+    if (self.m_bPlayEmptySound)
+    {
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, 'hlclassic/weapons/357_cock1.wav', 0.8, ATTN_NORM, 0, PITCH_NORM);
+      self.m_bPlayEmptySound = false;
+      return false;
+    }
+    return false;
+  }
 
-	void Spawn()
-	{
-		Precache();
-		g_EntityFuncs.SetModel( self, self.GetW_Model( W_MODEL ) );
-		self.m_iDefaultAmmo = DEFAULT_GIVE;
-		self.FallInit();
-	}
+  bool Deploy()
+  {
+    m_bSpotVisible = true;
 
-	void Precache()
-	{
-		self.PrecacheCustomModels();
-		g_Game.PrecacheModel( V_MODEL );
-		g_Game.PrecacheModel( W_MODEL );
-		g_Game.PrecacheModel( P_MODEL );
-		g_Game.PrecacheModel( LSR_SPR );
-		m_iShell = g_Game.PrecacheModel( S_MODEL );
+    bool bResult = self.DefaultDeploy(self.GetV_Model('models/hlclassic/v_desert_eagle.mdl'), self.GetP_Model('models/hlclassic/p_desert_eagle.mdl'), DRAW, 'onehanded');
+    self.m_flTimeWeaponIdle = WeaponTimeBase() + 1.0;
+    return bResult;
+  }
 
-		g_Game.PrecacheOther( GetAmmoName() );
+  void Holster(int skiplocal = 0)
+  {
+    self.m_fInReload = false;
 
-		for( uint i = 0; i < Sounds.length(); i++ )
-			g_SoundSystem.PrecacheSound( Sounds[i] );
+    if (m_pLaser !is null)
+    {
+      RemoveLaser();
+      m_bSpotVisible = false;
+    }
 
-		g_Game.PrecacheGeneric( "sprites/" + SPR_DIR + self.pev.classname + ".txt" );
-	}
+    BaseClass.Holster(skiplocal);
+  }
 
-	bool GetItemInfo( ItemInfo& out info )
-	{
-		info.iMaxAmmo1	= MAX_CARRY;
-		info.iAmmo1Drop	= MAX_CLIP;
-		info.iMaxAmmo2	= -1;
-		info.iAmmo2Drop	= -1;
-		info.iMaxClip	= MAX_CLIP;
-		info.iSlot	= SLOT;
-		info.iPosition	= POSITION;
-		info.iId	= g_ItemRegistry.GetIdForName( self.pev.classname );
-		info.iFlags	= FLAGS;
-		info.iWeight	= WEIGHT;
+  void PrimaryAttack()
+  {
+    if (m_pPlayer.pev.waterlevel == WATERLEVEL_HEAD)
+    {
+      self.PlayEmptySound();
+      self.m_flNextPrimaryAttack = WeaponTimeBase() + 0.15;
+      return;
+    }
 
-		return true;
-	}
+    if (self.m_iClip <= 0)
+    {
+      if (!self.m_fInReload)
+      {
+        if (self.m_bFireOnEmpty)
+        {
+          self.PlayEmptySound();
+          self.m_flNextPrimaryAttack = WeaponTimeBase() + 0.2;
+        }
+      }
+      return;
+    }
 
-	bool AddToPlayer( CBasePlayer@ pPlayer )
-	{
-		if ( !BaseClass.AddToPlayer( pPlayer ) )
-			return false;
+    m_pPlayer.m_iWeaponVolume = NORMAL_GUN_VOLUME;
+    m_pPlayer.m_iWeaponFlash = NORMAL_GUN_FLASH;
 
-		NetworkMessage message( MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict() );
-			message.WriteLong( g_ItemRegistry.GetIdForName( self.pev.classname ) );
-		message.End();
+    --self.m_iClip;
 
-		return true;
-	}
+    m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
 
-	bool Deploy()
-	{
-		bool bResult = self.DefaultDeploy( self.GetV_Model( V_MODEL ), self.GetP_Model( P_MODEL ), EAGLE_DRAW, "onehanded" );
-		m_bSpotVisible = true;
-		self.m_flTimeWeaponIdle = WeaponTimeBase() + 1.0;
-		return bResult;
-	}
+    m_pPlayer.SetAnimation(PLAYER_ATTACK1);
 
-	bool PlayEmptySound()
-	{
-		if( self.m_bPlayEmptySound )
-		{
-			self.m_bPlayEmptySound = false;
-			g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[4], 0.8, ATTN_NORM, 0, PITCH_NORM );
-		}
+    if (m_pLaser !is null && m_bLaserActive)
+    {
+      SuspendLaser(0.6);
+    }
 
-		return false;
-	}
+    Math.MakeVectors(m_pPlayer.pev.v_angle + m_pPlayer.pev.punchangle);
 
-	void Holster( int skiplocal = 0 )
-	{
-		self.m_fInReload = false;
-		SetThink( null );
-		if( m_pLaser !is null )
-		{
-			g_EntityFuncs.Remove( m_pLaser );
-			@m_pLaser = @null;
-			m_bSpotVisible = false;
-		}
+    Vector vecSrc = m_pPlayer.GetGunPosition();
+    Vector vecAiming = m_pPlayer.GetAutoaimVector(AUTOAIM_10DEGREES);
 
-		BaseClass.Holster( skiplocal );
-	}
+    const float flSpread = m_bLaserActive ? 0.001 : 0.1;
 
-	void PrimaryAttack()
-	{
-		if( self.m_iClip <= 0 || m_pPlayer.pev.waterlevel == WATERLEVEL_HEAD )
-		{
-			self.PlayEmptySound();
-			self.m_flNextPrimaryAttack = WeaponTimeBase() + (self.m_iClip > 0 ? 0.15 : 2.0);
-			return;
-		}
+    FireBulletsPlayer(1, vecSrc, vecAiming, Vector(flSpread, flSpread, flSpread), 8192.0, BULLET_PLAYER_EAGLE, 0);
 
-		--self.m_iClip;
+    self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = WeaponTimeBase() + (m_bLaserActive ? 0.5 : 0.22);
 
-		Vector vecSrc	 = m_pPlayer.GetGunPosition();
-		Vector vecAiming = m_pPlayer.GetAutoaimVector( AUTOAIM_10DEGREES );
-		Vector vecSpread = m_bLaserActive ? Vector(0.001,0.001,0.001) : Vector(0.1,0.1,0.1);
+    pev.effects |= EF_MUZZLEFLASH;
 
-		m_pPlayer.FireBullets( 1, vecSrc, vecAiming, vecSpread, 8192, BULLET_PLAYER_CUSTOMDAMAGE, 0, DAMAGE );
-		g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[0], Math.RandomFloat(0.92,1.0), ATTN_NORM, 0, 98 + Math.RandomLong(0,3) );
+    self.SendWeaponAnim(self.m_iClip <= 0 ? SHOOT_EMPTY : SHOOT, 0, pev.body);
+    m_pPlayer.pev.punchangle.x = -4.0;
 
-		HideLaser( 0.6 );
+    Vector ShellVelocity, ShellOrigin;
+    // GetDefaultShellInfo(ShellVelocity, ShellOrigin, -9.0, 14.0, 9.0);
+    GetDefaultShellInfo(ShellVelocity, ShellOrigin, 14.0, -10.0, 8.0);
+    g_EntityFuncs.EjectBrass(ShellOrigin, ShellVelocity, m_pPlayer.pev.angles[1], m_iShell, TE_BOUNCE_SHELL);
 
-		Vector vecShellVelocity, vecShellOrigin;
-		GetDefaultShellInfo( m_pPlayer, vecShellVelocity, vecShellOrigin, 14.0, -9.0, 9.0 );
-		g_EntityFuncs.EjectBrass( vecShellOrigin, vecShellVelocity, m_pPlayer.pev.angles.y, m_iShell, TE_BOUNCE_SHELL );
+    g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, 'weapons/desert_eagle_fire.wav', Math.RandomFloat(0.92, 1.0), ATTN_NORM, 0, 98 + Math.RandomLong(0, 3));
 
-		if( self.m_iClip <= 0 && m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
-			m_pPlayer.SetSuitUpdate( "!HEV_AMO0", false, 0 );
+    if (self.m_iClip <= 0 && m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
+      m_pPlayer.SetSuitUpdate('!HEV_AMO0', false, 0);
 
-		m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
-		self.pev.effects |= EF_MUZZLEFLASH;
+    self.m_flTimeWeaponIdle = WeaponTimeBase() + g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 10.0, 15.0);
 
-		m_pPlayer.SetAnimation( PLAYER_ATTACK1 );
-		self.SendWeaponAnim( self.m_iClip > 0 ? EAGLE_SHOOT : EAGLE_SHOOT_EMPTY );
+    UpdateLaser();
+  }
 
-		m_pPlayer.m_iWeaponVolume = NORMAL_GUN_VOLUME;
-		m_pPlayer.m_iWeaponFlash = NORMAL_GUN_FLASH;
+  void SecondaryAttack()
+  {
+    m_bLaserActive = !m_bLaserActive;
 
-		m_pPlayer.pev.punchangle.x = -4.0;
+    if (!m_bLaserActive)
+    {
+      if (m_pLaser !is null)
+      {
+        RemoveLaser();
 
-		self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = WeaponTimeBase() + (m_bLaserActive ? 0.5 : 0.22);
-		self.m_flTimeWeaponIdle = WeaponTimeBase() + g_PlayerFuncs.SharedRandomFloat( m_pPlayer.random_seed, 10.0, 15.0 );
+        g_SoundSystem.EmitSound(m_pPlayer.edict(), CHAN_WEAPON, 'weapons/desert_eagle_sight2.wav', VOL_NORM, ATTN_NORM);
+      }
+    }
 
-		UpdateLaser();
+    self.m_flNextSecondaryAttack = WeaponTimeBase() + 0.5;
+  }
 
-		TraceResult tr;
-		float x, y;
+  void Reload()
+  {
+    if (self.m_iClip == MAX_CLIP || m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
+      return;
 
-		g_Utility.GetCircularGaussianSpread( x, y );
+    const bool bResult = self.DefaultReload(MAX_CLIP, self.m_iClip > 0 ? RELOAD : RELOAD_NOSHOT, 1.5);
 
-		Vector vecDir = vecAiming + x * vecSpread.x * g_Engine.v_right + y * vecSpread.y * g_Engine.v_up;
-		Vector vecEnd = vecSrc + vecDir * 8192;
+    if (bResult && m_pLaser !is null && m_bLaserActive)
+    {
+      SuspendLaser(1.6);
 
-		g_Utility.TraceLine( vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr );
+      self.m_flNextSecondaryAttack = WeaponTimeBase() + 1.5;
+    }
 
-		if( tr.flFraction < 1.0 )
-		{
-			if( tr.pHit !is null )
-			{
-				CBaseEntity@ pHit = g_EntityFuncs.Instance( tr.pHit );
+    if (bResult)
+    {
+      self.m_flTimeWeaponIdle = WeaponTimeBase() + g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 10.0, 15.0);
+    }
 
-				g_SoundSystem.PlayHitSound( tr, vecSrc, vecEnd, BULLET_PLAYER_EAGLE );
-				g_Utility.BubbleTrail( vecSrc, tr.vecEndPos, int((8192 * tr.flFraction)/64.0) );
+    BaseClass.Reload();
+  }
 
-				if( pHit is null || pHit.IsBSPModel() )
-					g_WeaponFuncs.DecalGunshot( tr, BULLET_PLAYER_EAGLE );
-			}
-		}
-	}
+  bool ShouldWeaponIdle()
+  {
+    return true;
+  }
 
-	void SecondaryAttack()
-	{
-		m_bLaserActive = !m_bLaserActive;
+  void WeaponIdle()
+  {
+    UpdateLaser();
 
-		if( !m_bLaserActive )
-		{
-			if( m_pLaser !is null )
-			{
-				g_EntityFuncs.Remove( m_pLaser );
-				@m_pLaser = @null;
-				g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[2], VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
-			}
-		}
+    // Because ShouldWeaponIdle() returns true this is always called making 
+    // m_bPlayEmptySound always true allowing spamming of empty sound
+    if (!self.m_bFireOnEmpty)
+      self.ResetEmptySound();
 
-		self.m_flNextSecondaryAttack = WeaponTimeBase() + 0.5;
-	}
+    m_pPlayer.GetAutoaimVector(AUTOAIM_10DEGREES);
 
-	void Reload()
-	{
-		if( self.m_iClip == MAX_CLIP || m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
-			return;
+    if (self.m_flTimeWeaponIdle <= WeaponTimeBase() && self.m_iClip > 0)
+    {
+      int iAnim;
+      const float flNextIdle = g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 0.0, 1.0);
+      if (m_bLaserActive)
+      {
+        if (flNextIdle > 0.5)
+        {
+          iAnim = IDLE5;
+          self.m_flTimeWeaponIdle = WeaponTimeBase() + 2.0;
+        }
+        else
+        {
+          iAnim = IDLE4;
+          self.m_flTimeWeaponIdle = WeaponTimeBase() + 2.5;
+        }
+      }
+      else
+      {
+        if (flNextIdle <= 0.3)
+        {
+          iAnim = IDLE1;
+          self.m_flTimeWeaponIdle = WeaponTimeBase() + 2.5;
+        }
+        else
+        {
+          if (flNextIdle > 0.6)
+          {
+            iAnim = IDLE3;
+            self.m_flTimeWeaponIdle = WeaponTimeBase() + 1.633;
+          }
+          else
+          {
+            iAnim = IDLE2;
+            self.m_flTimeWeaponIdle = WeaponTimeBase() + 2.5;
+          }
+        }
+      }
 
-		if( m_pLaser !is null && m_bLaserActive )
-		{
-			HideLaser( 1.6 );
-			self.m_flNextSecondaryAttack = WeaponTimeBase() + 1.5;
-		}
-		self.DefaultReload( MAX_CLIP, self.m_iClip > 0 ? EAGLE_RELOAD : EAGLE_RELOAD_NOSHOT, 1.5 );
-		self.m_flTimeWeaponIdle = WeaponTimeBase() + g_PlayerFuncs.SharedRandomFloat( m_pPlayer.random_seed, 10.0, 15.0 );
+      self.SendWeaponAnim(iAnim, 0, pev.body);
+    }
+  }
 
-		BaseClass.Reload();
-	}
+  private void UpdateLaser()
+  {
+    if (m_bLaserActive && m_bSpotVisible)
+    {
+      if (m_pLaser is null)
+      {
+        @m_pLaser = CreateLaserSpot();
+        g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, 'weapons/desert_eagle_sight.wav', VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+      }
 
-	void WeaponIdle()
-	{
-		UpdateLaser();
-		self.ResetEmptySound();
-		m_pPlayer.GetAutoaimVector( AUTOAIM_10DEGREES );
+      Math.MakeVectors(m_pPlayer.pev.v_angle);
 
-		if( self.m_flTimeWeaponIdle > WeaponTimeBase() || self.m_iClip <= 0 )
-			return;
+      Vector vecSrc = m_pPlayer.GetGunPosition();
+      Vector vecEnd = vecSrc + g_Engine.v_forward * 8192.0;
 
-		float flRand = g_PlayerFuncs.SharedRandomFloat( m_pPlayer.random_seed, 0.0, 1.0 );
-		if( m_bLaserActive )
-		{
-			self.SendWeaponAnim( flRand > 0.5 ? EAGLE_IDLE5 : EAGLE_IDLE4 );
-			self.m_flTimeWeaponIdle = WeaponTimeBase() + (flRand > 0.5 ? 2.0 : 2.5);
-		}
-		else
-		{
-			if( flRand <= 0.3 )
-			{
-				self.SendWeaponAnim( EAGLE_IDLE1 );
-				self.m_flTimeWeaponIdle = WeaponTimeBase() + 2.5;
-			}
-			else
-			{
-				self.SendWeaponAnim( flRand > 0.6 ? EAGLE_IDLE3 : EAGLE_IDLE2 );
-				self.m_flTimeWeaponIdle = WeaponTimeBase() + (flRand > 0.6 ? 1.633 : 2.5);
-			}
-		}
-	}
-}
+      TraceResult tr;
+      g_Utility.TraceLine(vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr);
 
-string GetAmmoName()
-{
-	return "ammo_357";
+      g_EntityFuncs.SetOrigin(m_pLaser, tr.vecEndPos);
+    }
+  }
+
+  // CEagleLaser::CreateSpot()
+  private CSprite@ CreateLaserSpot()
+  {
+    CBaseEntity@ pEntity = g_EntityFuncs.CreateEntity('env_sprite', {
+      {'model', 'sprites/laserdot.spr'}, 
+      {'scale', '0.5'}, 
+      {'framerate', '0.0'}}
+    );
+
+    pEntity.pev.rendermode = kRenderGlow;
+    pEntity.pev.renderfx = kRenderFxNoDissipation;
+    pEntity.pev.renderamt = 255.0;
+
+    return cast<CSprite>(pEntity);
+  }
+
+  // CEagleLaser::Suspend(float flSuspendTime)
+  private void SuspendLaser(float flSuspendTime)
+  {
+    m_pLaser.TurnOff();
+
+    @laser_nextthink = @g_Scheduler.SetTimeout(@m_pLaser, 'TurnOn', flSuspendTime);
+  }
+
+  private void RemoveLaser()
+  {
+    g_EntityFuncs.Remove(@m_pLaser);
+    @m_pLaser = @null;
+
+    g_Scheduler.RemoveTimer(laser_nextthink);
+    @laser_nextthink = @null;
+  }
 }
 
 string GetName()
 {
-	return "weapon_ofeagle";
+  return 'weapon_ofeagle';
 }
 
 void Register()
 {
-	if( !g_CustomEntityFuncs.IsCustomEntity( GetName() ) )
-	{
-		g_CustomEntityFuncs.RegisterCustomEntity( "OF_EAGLE::weapon_ofeagle", GetName() );
-		g_ItemRegistry.RegisterWeapon( GetName(), SPR_DIR, AMMO_TYPE, "", GetAmmoName() );
-	}
+  if (!g_CustomEntityFuncs.IsCustomEntity(GetName()))
+  {
+    g_CustomEntityFuncs.RegisterCustomEntity('CEagle::weapon_ofeagle', GetName());
+    g_ItemRegistry.RegisterWeapon(GetName(), 'hl_weapons', '357', '', 'ammo_357', '');
+  }
 }
 
 }
-

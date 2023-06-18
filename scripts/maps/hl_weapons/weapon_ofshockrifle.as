@@ -1,268 +1,325 @@
-/* 
-* The Opposing Force version of the shockrifle
-*/
+/*
+ * The Opposing Force version of the shockrifle
+ */
 
-namespace OF_SHOCKRIFLE
+#include 'utils'
+
+namespace CShockRifle
 {
 
 enum shockrifle_e
 {
-	SHOCKRIFLE_IDLE1 = 0,
-	SHOCKRIFLE_FIRE,
-	SHOCKRIFLE_DRAW,
-	SHOCKRIFLE_HOLSTER,
-	SHOCKRIFLE_IDLE3
+  IDLE1 = 0,
+  FIRE,
+  DRAW,
+  HOLSTER,
+  IDLE3
 };
 
-// Models
-string W_MODEL		= "models/w_shock_rifle.mdl";
-string V_MODEL		= "models/v_shock.mdl";
-string P_MODEL		= "models/p_shock.mdl";
-// Sprites
-string SPR_DIR		= "hl_weapons/";
-string BEAM_SPR		= "sprites/lgtning.spr";
-// Sounds
-array<string> Sounds = { 
-		"weapons/shock_fire.wav",
-		"weapons/shock_draw.wav",
-		"weapons/shock_recharge.wav",
-		"weapons/shock_discharge.wav"
-};
 // Weapon information
-int MAX_CARRY		= 100; //10; Swap values if you want the default OF values
-int MAX_CLIP		= WEAPON_NOCLIP;
-int DEFAULT_GIVE	= MAX_CARRY;
-int WEIGHT		= 15;
-int FLAGS		= ITEM_FLAG_NOAUTORELOAD | ITEM_FLAG_NOAUTOSWITCHEMPTY;
-uint DAMAGE		= uint(g_EngineFuncs.CVarGetFloat("sk_plr_shockrifle"));
-uint SLOT		= 6;
-uint POSITION		= 3;
-string AMMO_TYPE 	= "shock charges";
+const int MAX_CARRY = 100;
+const int DEFAULT_GIVE = MAX_CARRY;
+const int WEIGHT = 15;
 
-class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
+// Fast shot thing
+const CCVar@ g_ShockRifleFast = CCVar('shockrifle_fast', 0, '', ConCommandFlag::Cheat); // as_command shockrifle_fast
+
+class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity, WeaponUtils
 {
-	private CBasePlayer@ m_pPlayer
-	{
-		get const	{ return cast<CBasePlayer@>( self.m_hPlayer.GetEntity() ); }
-		set		{ self.m_hPlayer = EHandle( @value ); }
-	}
-	private EHandle[] m_hBeam( 3 );
-	private float m_flRechargeTime;
+  private CBasePlayer@ m_pPlayer
+  {
+    get const { return cast<CBasePlayer>(self.m_hPlayer.GetEntity()); }
+    set       { self.m_hPlayer = EHandle(@value); }
+  }
+  private float m_flRechargeTime;
+  private float m_flSoundDelay;
 
-	float WeaponTimeBase()
-	{
-		return g_Engine.time;
-	}
+  void Spawn()
+  {
+    Precache();
+    g_EntityFuncs.SetModel(self, self.GetW_Model('models/w_shock_rifle.mdl'));
+    self.m_iDefaultAmmo = DEFAULT_GIVE;
+    self.FallInit();
 
-	void CreateChargeEffect()
-	{
-		if( IsMultiplayer )
-			return;
+    pev.sequence = 0;
+    pev.animtime = g_Engine.time;
+    pev.framerate = 1.0;
+    self.ResetSequenceInfo();
+  }
 
-		CBeam@ m_pBeam;
-		for( uint i = 0; i < m_hBeam.length(); i++ )
-		{
-			if( !m_hBeam[i] )
-				m_hBeam[i] = EHandle( @g_EntityFuncs.CreateBeam( BEAM_SPR, 16 ) );
+  void Precache()
+  {
+    self.PrecacheCustomModels();
+    g_Game.PrecacheModel('models/v_shock.mdl');
+    g_Game.PrecacheModel('models/w_shock_rifle.mdl');
+    g_Game.PrecacheModel('models/p_shock.mdl');
 
-			@m_pBeam = cast<CBeam@>( m_hBeam[i].GetEntity() );
-			m_pBeam.EntsInit( m_pPlayer.entindex(), m_pPlayer.entindex() );
-			m_pBeam.SetStartAttachment( 1 );
-			m_pBeam.SetEndAttachment( 2+i );
-			m_pBeam.SetNoise( 75 );
-			m_pBeam.pev.scale = 10.0;
-			m_pBeam.SetColor( 0, 253, 253 );
-			m_pBeam.SetScrollRate( 30 );
-			m_pBeam.SetBrightness( 190 );
-		}
-		SetThink( ThinkFunction( this.ClearBeams ) );
-		self.pev.nextthink = WeaponTimeBase() + 0.08;
-	}
+    g_Game.PrecacheModel('sprites/lgtning.spr');
 
-	void ClearBeams()
-	{
-		if( IsMultiplayer )
-			return;
+    g_Game.PrecacheOther('shock_beam');
 
-		for( uint i = 0; i < m_hBeam.length(); i++ )
-		{
-			if( m_hBeam[i] )
-			{
-				g_EntityFuncs.Remove( m_hBeam[i].GetEntity() );
-				m_hBeam[i] = EHandle( @null );
-			}
-		}
-		SetThink( null );
-	}
+    g_SoundSystem.PrecacheSound('weapons/shock_fire.wav');
+    g_SoundSystem.PrecacheSound('weapons/shock_draw.wav'); // default viewmodel; sequence: 2; frame: 1; event 5004
+    g_SoundSystem.PrecacheSound('weapons/shock_recharge.wav');
+    g_SoundSystem.PrecacheSound('weapons/shock_discharge.wav');
 
-	void Spawn()
-	{
-		Precache();
-		g_EntityFuncs.SetModel( self, self.GetW_Model( W_MODEL ) );
-		self.m_iDefaultAmmo = DEFAULT_GIVE;
-		self.FallInit();
+    g_Game.PrecacheGeneric('sprites/hl_weapons/' + pev.classname + '.txt');
+  }
 
-		self.pev.sequence = 0;
-		self.pev.animtime = g_Engine.time;
-		self.pev.framerate = 1;
-	}
+  bool GetItemInfo(ItemInfo& out info)
+  {
+    info.iMaxAmmo1 = MAX_CARRY;
+    info.iMaxAmmo2 = -1;
+    info.iAmmo1Drop = -1;
+    info.iAmmo2Drop = -1;
+    info.iMaxClip = WEAPON_NOCLIP;
+    info.iFlags = ITEM_FLAG_NOAUTORELOAD | ITEM_FLAG_NOAUTOSWITCHEMPTY;
+    info.iSlot = 6;
+    info.iPosition = 3;
+    info.iId = g_ItemRegistry.GetIdForName(pev.classname);
+    info.iWeight = 15;
 
-	void Precache()
-	{
-		self.PrecacheCustomModels();
-		g_Game.PrecacheModel( V_MODEL );
-		g_Game.PrecacheModel( W_MODEL );
-		g_Game.PrecacheModel( P_MODEL );
-		g_Game.PrecacheModel( BEAM_SPR );
+    return true;
+  }
 
-		g_Game.PrecacheOther( "shock_beam" );
+  bool AddToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (!BaseClass.AddToPlayer(pPlayer))
+      return false;
 
-		for( uint i = 0; i < Sounds.length(); i++ )
-		{
-			g_SoundSystem.PrecacheSound( Sounds[i] );
-			g_Game.PrecacheGeneric( "sound/" + Sounds[i] );
-		}
+    NetworkMessage message(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
+      message.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
+    message.End();
 
-		g_Game.PrecacheGeneric( "sprites/" + SPR_DIR + self.pev.classname + ".txt" );
-	}
+    return true;
+  }
 
-	bool GetItemInfo( ItemInfo& out info )
-	{
-		info.iMaxAmmo1	= MAX_CARRY;
-		info.iAmmo1Drop	= MAX_CLIP;
-		info.iMaxAmmo2	= -1;
-		info.iAmmo2Drop	= -1;
-		info.iMaxClip	= MAX_CLIP;
-		info.iSlot	= SLOT;
-		info.iPosition	= POSITION;
-		info.iId	= g_ItemRegistry.GetIdForName( self.pev.classname );
-		info.iFlags	= FLAGS;
-		info.iWeight	= WEIGHT;
+  void AttachToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (self.m_iDefaultAmmo == 0)
+      self.m_iDefaultAmmo = 1;
+    
+    BaseClass.AttachToPlayer(pPlayer);
+  }
 
-		return true;
-	}
+  bool CanDeploy()
+  {
+    return true;
+  }
 
-	bool AddToPlayer( CBasePlayer@ pPlayer )
-	{
-		if( !BaseClass.AddToPlayer( pPlayer ) )
-			return false;
+  bool Deploy()
+  {
+    if (g_ShockRifleFast.GetBool())
+    {
+      m_flRechargeTime = g_Engine.time + 0.25;
+    }
+    else
+    {
+      m_flRechargeTime = g_Engine.time + 0.5;
+    }
 
-		NetworkMessage message( MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict() );
-			message.WriteLong( g_ItemRegistry.GetIdForName( self.pev.classname ) );
-		message.End();
+    bool bResult = self.DefaultDeploy(self.GetV_Model('models/v_shock.mdl'), self.GetP_Model('models/p_shock.mdl'), DRAW, 'bow');
+    self.m_flTimeWeaponIdle = WeaponTimeBase() + 1.0;
+    return bResult;
+  }
 
-		return true;
-	}
+  void Holster(int skiplocal = 0)
+  {
+    self.m_fInReload = false;
 
-	bool Deploy()
-	{
-		bool bResult = self.DefaultDeploy( self.GetV_Model( V_MODEL ), self.GetP_Model( P_MODEL ), SHOCKRIFLE_DRAW, "bow" );
-		m_flRechargeTime = WeaponTimeBase() + (IsMultiplayer ? 0.25 : 0.5);
-		self.m_flTimeWeaponIdle = WeaponTimeBase() + 1.0;
-		return bResult;
-	}
+    SetThink(null);
 
-	bool CanDeploy()
-	{
-		return true;
-	}
+    if (m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
+      m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, 1);
 
-	void Holster( int skiplocal = 0 )
-	{
-		if( m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
-			m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType, 1 );
+    BaseClass.Holster(skiplocal);
+  }
 
-		ClearBeams();
+  void PrimaryAttack()
+  {
+    if (m_pPlayer.pev.waterlevel == WATERLEVEL_HEAD)
+    {
+      const float flVolume = Math.RandomFloat(0.8, 0.9);
+      g_SoundSystem.EmitSound(m_pPlayer.edict(), CHAN_ITEM, 'weapons/shock_discharge.wav', flVolume, ATTN_NONE);
 
-		BaseClass.Holster( skiplocal );
-	}
+      const int ammoCount = m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType);
+      g_WeaponFuncs.RadiusDamage(pev.origin, m_pPlayer.pev, m_pPlayer.pev, ammoCount * 100.0, ammoCount * 150.0, CLASS_NONE, DMG_ALWAYSGIB | DMG_BLAST);
+      m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, 0);
+      return;
+    }
 
-	void PrimaryAttack()
-	{
-		if( m_pPlayer.pev.waterlevel == WATERLEVEL_HEAD )
-		{
-			g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_ITEM, Sounds[3], Math.RandomFloat(0.8,0.9), ATTN_NORM, 0, PITCH_NORM );
-			g_WeaponFuncs.RadiusDamage( m_pPlayer.pev.origin, m_pPlayer.pev, m_pPlayer.pev, 
-				m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) * 100.0, m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) * 150.0, CLASS_NONE, DMG_ALWAYSGIB | DMG_BLAST );
-			m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType, 0 );
-			return;
-		}
+    self.Reload();
 
-		self.Reload();
+    if (m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
+      return;
 
-		if( m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) <= 0 )
-			return;
+    m_pPlayer.m_iWeaponVolume = LOUD_GUN_VOLUME;
+    m_pPlayer.m_iWeaponFlash = BRIGHT_GUN_FLASH;
 
-		m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType, m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) - 1 );
+    m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) - 1);
 
-		Vector vecSrc	 = m_pPlayer.GetGunPosition() + g_Engine.v_forward * 16 + g_Engine.v_right * 9 + g_Engine.v_up * -7;
-		Vector vecAngles = m_pPlayer.pev.v_angle + m_pPlayer.pev.punchangle; vecAngles.x = -vecAngles.x;
+    m_flRechargeTime = g_Engine.time + 1.0;
 
-		CBaseEntity@ pBeam = g_EntityFuncs.Create( "shock_beam", vecSrc, vecAngles , false, m_pPlayer.edict() );
-		if( pBeam !is null ) { pBeam.pev.velocity = g_Engine.v_forward * 2000; pBeam.pev.dmg = DAMAGE; }
-		g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[0], 1, ATTN_NORM, 0, PITCH_NORM );
+    g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, 'weapons/shock_fire.wav', 0.9, ATTN_NORM, 0, PITCH_NORM);
 
-		CreateChargeEffect();
+    self.SendWeaponAnim(FIRE, 0, pev.body);
 
-		m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
-		self.pev.effects |= EF_MUZZLEFLASH;
+    for (uint uiIndex = 0; uiIndex < 3; ++uiIndex)
+    {
+      NetworkMessage message(MSG_ALL, NetworkMessages::SVC_TEMPENTITY, null);
+        message.WriteByte(TE_BEAMENTS);
+        message.WriteShort(m_pPlayer.entindex() | 0x1000);
+        message.WriteShort(m_pPlayer.entindex() | ((uiIndex + 2) << 12));
+        message.WriteShort(g_EngineFuncs.ModelIndex('sprites/lgtning.spr'));
+        message.WriteByte(0);
+        message.WriteByte(10);
+        message.WriteByte(1); // 0.8
+        message.WriteByte(10);
+        message.WriteByte(75);
+        message.WriteByte(0);
+        message.WriteByte(253);
+        message.WriteByte(253);
+        message.WriteByte(190);
+        message.WriteByte(30);
+      message.End();
+    }
 
-		m_pPlayer.SetAnimation( PLAYER_ATTACK1 );
-		self.SendWeaponAnim( SHOCKRIFLE_FIRE );
+    m_pPlayer.SetAnimation(PLAYER_ATTACK1);
 
-		m_pPlayer.m_iWeaponVolume = LOUD_GUN_VOLUME;
-		m_pPlayer.m_iWeaponFlash = BRIGHT_GUN_FLASH;
+    m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
 
-		m_flRechargeTime = g_Engine.time + 1.0;
+    const Vector vecAnglesAim = m_pPlayer.pev.v_angle + m_pPlayer.pev.punchangle;
 
-		self.m_flNextPrimaryAttack = WeaponTimeBase() + (IsMultiplayer ? 0.1 : 0.2);
-		self.m_flTimeWeaponIdle = WeaponTimeBase() + 0.33;
-	}
+    Math.MakeVectors(vecAnglesAim);
 
-	void Reload()
-	{
-		while( m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) < MAX_CARRY && m_flRechargeTime < g_Engine.time )
-		{
-			m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType, m_pPlayer.m_rgAmmo( self.m_iPrimaryAmmoType ) + 1 );
-			g_SoundSystem.EmitSoundDyn( m_pPlayer.edict(), CHAN_WEAPON, Sounds[2], VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
-			m_flRechargeTime += (IsMultiplayer ? 0.25 : 0.5);
-		}
-	}
+    const auto vecSrc = m_pPlayer.GetGunPosition() + g_Engine.v_forward * 16.0 + g_Engine.v_right * 9.0 + g_Engine.v_up * -7.0;
 
-	void WeaponIdle()
-	{
-		self.Reload();
+    // m_pPlayer.GetAutoaimVectorFromPoint(vecSrc, AUTOAIM_10DEGREES);
 
-		if( self.m_flTimeWeaponIdle > WeaponTimeBase() )
-			return;
+    CreateShockBeam(vecSrc, vecAnglesAim, m_pPlayer);
 
-		float flRand = g_PlayerFuncs.SharedRandomFloat( m_pPlayer.random_seed, 0.0, 1.0 );
-		if( flRand <= 0.75 )
-		{
-			self.SendWeaponAnim( SHOCKRIFLE_IDLE3 );
-			self.m_flTimeWeaponIdle = WeaponTimeBase() + (51.0/15.0);
-		}
-		else
-		{
-			self.SendWeaponAnim( SHOCKRIFLE_IDLE1 );	
-			self.m_flTimeWeaponIdle = WeaponTimeBase() + (101.0/30.0);
-		}
-	}
+    if (g_ShockRifleFast.GetBool())
+    {
+      self.m_flNextPrimaryAttack = WeaponTimeBase() + 0.1;
+    }
+    else
+    {
+      self.m_flNextPrimaryAttack = WeaponTimeBase() + 0.2;
+    }
+
+    self.m_flTimeWeaponIdle = WeaponTimeBase() + 0.33;
+  }
+
+  void SecondaryAttack()
+  {
+    // Nothing
+  }
+
+  void ItemPostFrame()
+  {
+    BaseClass.ItemPostFrame();
+
+    self.Reload();
+  }
+
+  void Reload()
+  {
+    RechargeAmmo(true);
+
+    BaseClass.Reload();
+  }
+
+  void WeaponIdle()
+  {
+    self.Reload();
+
+    self.ResetEmptySound();
+
+    m_pPlayer.GetAutoaimVector(AUTOAIM_10DEGREES);
+
+    if (m_flSoundDelay != 0.0 && g_Engine.time >= m_flSoundDelay)
+    {
+      m_flSoundDelay = 0.0;
+    }
+
+    if (self.m_flTimeWeaponIdle > WeaponTimeBase())
+      return;
+
+    int iAnim;
+    const float flRand = g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 0.0, 1.0);
+    if (flRand <= 0.75)
+    {
+      iAnim = IDLE3;
+      self.m_flTimeWeaponIdle = WeaponTimeBase() + 51.0 / 15.0;
+    }
+    else
+    {
+      iAnim = IDLE1;
+      self.m_flTimeWeaponIdle = WeaponTimeBase() + 101.0 / 30.0;
+    }
+
+    self.SendWeaponAnim(iAnim, 0, pev.body);
+  }
+
+  private void RechargeAmmo(bool bLoud)
+  {
+    int ammoCount = m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType);
+
+    while (ammoCount < DEFAULT_GIVE && m_flRechargeTime < g_Engine.time)
+    {
+      ++ammoCount;
+
+      if (bLoud)
+      {
+        g_SoundSystem.EmitSound(m_pPlayer.edict(), CHAN_WEAPON, 'weapons/shock_recharge.wav', VOL_NORM, ATTN_NORM);
+      }
+
+      if (g_ShockRifleFast.GetBool())
+      {
+        m_flRechargeTime += 0.25;
+      }
+      else
+      {
+        m_flRechargeTime += 0.5;
+      }
+    }
+
+    m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, ammoCount);
+  }
+
+  // CShockBeam::CreateShockBeam(const Vector& vecOrigin, const Vector& vecAngles, CBaseEntity* pOwner)
+  private void CreateShockBeam(const Vector& in vecOrigin, const Vector& in vecAngles, CBaseEntity@ pOwner)
+  {
+    auto pBeam = g_EntityFuncs.CreateEntity('shock_beam', null, false);
+
+    pBeam.pev.angles = vecAngles;
+    pBeam.pev.angles.x = -pBeam.pev.angles.x;
+
+    g_EntityFuncs.SetOrigin(pBeam, vecOrigin);
+
+    Math.MakeVectors(pBeam.pev.angles);
+
+    pBeam.pev.velocity = g_Engine.v_forward * 2000.0;
+    pBeam.pev.velocity.z = -pBeam.pev.velocity.z;
+
+    g_EntityFuncs.DispatchSpawn(pBeam.edict());
+
+    @pBeam.pev.owner = @pOwner.edict();
+  }
 }
 
 string GetName()
 {
-	return "weapon_ofshockrifle";
+  return 'weapon_ofshockrifle';
 }
 
 void Register()
 {
-	if( !g_CustomEntityFuncs.IsCustomEntity( GetName() ) )
-	{
-		g_CustomEntityFuncs.RegisterCustomEntity( "OF_SHOCKRIFLE::weapon_ofshockrifle", GetName() );
-		g_ItemRegistry.RegisterWeapon( GetName(), SPR_DIR, AMMO_TYPE );
-	}
+  if (!g_CustomEntityFuncs.IsCustomEntity(GetName()))
+  {
+    g_CustomEntityFuncs.RegisterCustomEntity('CShockRifle::weapon_ofshockrifle', GetName());
+    g_ItemRegistry.RegisterWeapon(GetName(), 'hl_weapons', 'shock charges', '', '', '');
+  }
 }
 
 }
-
