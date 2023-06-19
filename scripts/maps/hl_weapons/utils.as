@@ -75,20 +75,20 @@ mixin class WeaponUtils
             switch (iBulletType)
             {
             case BULLET_PLAYER_357:
-              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_plr_357_bullet'), vecEnd, tr, DMG_BULLET);
+              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_plr_357_bullet'), vecEnd, tr, DMG_BULLET | DMG_NEVERGIB);
               break;
 
             case BULLET_PLAYER_EAGLE:
               // SC:66% of the magnum, OF:85% of the magnum; based on skillopfor.cfg
-              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_plr_357_bullet') * 0.85, vecEnd, tr, DMG_BULLET);
+              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_plr_357_bullet') * 0.85, vecEnd, tr, DMG_BULLET | DMG_NEVERGIB);
               break;
 
             case BULLET_PLAYER_SAW:
-              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_556_bullet'), vecEnd, tr, DMG_BULLET);
+              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_556_bullet'), vecEnd, tr, DMG_BULLET | DMG_NEVERGIB);
               break;
 
             case BULLET_PLAYER_SNIPER:
-              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_plr_762_bullet'), vecEnd, tr, DMG_BULLET);
+              pHit.TraceAttack(m_pPlayer.pev, g_EngineFuncs.CVarGetFloat('sk_plr_762_bullet'), vecEnd, tr, DMG_BULLET | DMG_NEVERGIB);
               break;
             }
           }
