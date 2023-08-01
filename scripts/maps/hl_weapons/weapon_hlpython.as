@@ -26,7 +26,7 @@ const int DEFAULT_GIVE = MAX_CLIP;
 const int WEIGHT       = 15;
 
 // Laser sight thing
-const CCVar@ g_RevolverLaserSight = CCVar('revolver_laser_sight', 1, '', ConCommandFlag::Cheat); // as_command revolver_laser_sight
+const CCVar@ g_RevolverLaserSight = CCVar('revolver_laser_sight', 1, '', ConCommandFlag::AdminOnly); // as_command revolver_laser_sight
 
 bool UseLaserSight()
 {

@@ -22,7 +22,7 @@ const int DEFAULT_GIVE = MAX_CARRY;
 const int WEIGHT = 15;
 
 // Fast shot thing
-const CCVar@ g_ShockRifleFast = CCVar('shockrifle_fast', 0, '', ConCommandFlag::Cheat); // as_command shockrifle_fast
+const CCVar@ g_ShockRifleFast = CCVar('shockrifle_fast', 0, '', ConCommandFlag::AdminOnly); // as_command shockrifle_fast
 
 class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity, WeaponUtils
 {

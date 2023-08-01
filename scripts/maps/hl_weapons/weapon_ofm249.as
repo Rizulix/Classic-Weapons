@@ -27,9 +27,9 @@ const int DEFAULT_GIVE = MAX_CLIP;
 const int WEIGHT       = 20;
 
 // Spread thing
-const CCVar@ g_M249WideSpread = CCVar('m249_wide_spread', 0, '', ConCommandFlag::Cheat); // as_command m249_wide_spread
+const CCVar@ g_M249WideSpread = CCVar('m249_wide_spread', 0, '', ConCommandFlag::AdminOnly); // as_command m249_wide_spread
 // Knockback thing
-const CCVar@ g_M249Knockback = CCVar('m249_knockback', 1, '', ConCommandFlag::Cheat); // as_command m249_knockback
+const CCVar@ g_M249Knockback = CCVar('m249_knockback', 1, '', ConCommandFlag::AdminOnly); // as_command m249_knockback
 
 class weapon_ofm249 : ScriptBasePlayerWeaponEntity, WeaponUtils
 {
