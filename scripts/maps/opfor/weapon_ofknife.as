@@ -38,8 +38,8 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
     get const { return cast<CBasePlayer>(self.m_hPlayer.GetEntity()); }
     set       { self.m_hPlayer = EHandle(@value); }
   }
-  private TraceResult m_trHit;
   private CScheduledFunction@ m_schUnstuckMe = null;
+  private TraceResult m_trHit;
   private int m_iSwing;
 
   void Spawn()
@@ -306,12 +306,17 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
 
   void TertiaryAttack()
   {
+    self.m_flNextTertiaryAttack = g_Engine.time + 1.0f;
+
+    if (int(g_EngineFuncs.CVarGetFloat("mp_dropweapons")) == 0)
+      return;
+
     self.SendWeaponAnim(ATTACK1);
 
     SetThink(ThinkFunction(Throw));
     pev.nextthink = g_Engine.time + 0.3f;
 
-    self.m_flNextTertiaryAttack = self.m_flNextPrimaryAttack = g_Engine.time + 1.0f;
+    self.m_flNextPrimaryAttack = self.m_flNextTertiaryAttack;
   }
 
   void SwingAgain()
