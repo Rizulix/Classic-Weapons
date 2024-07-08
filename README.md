@@ -17,7 +17,9 @@
 
 	- weapon_hlpython
 	- weapon_ofeagle
+	- weapon_ofknife
 	- weapon_ofm249
+	- weapon_ofpenguin
 	- weapon_ofshockrifle
 	- weapon_ofsniperrifle
 
@@ -34,6 +36,8 @@
 - `m249_knockback`: Enables m249 knockback on firing. (default: 1)
 
 - `shockrifle_fast`: Enables rapid fire and rapid ammo regeneration. (default: 0)
+
+- `knife_allow_backstab`: Enables knife backstack (default: 1)
 
 Change its value with `as_command` e.g.:
 

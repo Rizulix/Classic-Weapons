@@ -1,0 +1,4 @@
+3
+weapon			640 opfor/640hudof03	0	180	170	45
+weapon_s		640 opfor/640hudof04	0	180	170	45
+ammo			640 opfor/640hud7	144	72	24	24
