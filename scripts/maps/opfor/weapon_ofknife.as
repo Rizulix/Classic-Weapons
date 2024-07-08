@@ -306,6 +306,9 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
 
   void TertiaryAttack()
   {
+    if (true)
+      return;
+
     self.m_flNextTertiaryAttack = g_Engine.time + 1.0f;
 
     if (int(g_EngineFuncs.CVarGetFloat("mp_dropweapons")) == 0)
