@@ -164,7 +164,7 @@ class weapon_ofm249 : ScriptBasePlayerWeaponEntity
     else
       vecSpread = self.BulletAccuracy(VECTOR_CONE_10DEGREES, VECTOR_CONE_4DEGREES, VECTOR_CONE_2DEGREES);
 
-    self.FireBullets(1, vecSrc, vecAiming, vecSpread, 8192.0f, BULLET_PLAYER_SAW, 2, 0, m_pPlayer.pev);
+    self.FireBullets(1, vecSrc, vecAiming, vecSpread, 8192.0f, BULLET_PLAYER_CUSTOMDAMAGE, 2, int(g_EngineFuncs.CVarGetFloat("sk_556_bullet")), m_pPlayer.pev);
 
     self.SendWeaponAnim(SHOOT1 + Math.RandomLong(0, 2), 0, GetBody());
     g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/saw_fire1.wav", VOL_NORM, ATTN_NORM, 0, 94 + Math.RandomLong(0, 15));
