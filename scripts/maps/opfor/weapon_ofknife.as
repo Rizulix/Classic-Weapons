@@ -81,7 +81,7 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
     info.iSlot = 0;
     info.iPosition = 7;
     info.iId = g_ItemRegistry.GetIdForName(pev.classname);
-    info.iFlags = 0;
+    info.iFlags = -1;
     info.iWeight = WEIGHT;
     return true;
   }
@@ -306,9 +306,6 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
 
   void TertiaryAttack()
   {
-    if (true)
-      return;
-
     self.m_flNextTertiaryAttack = g_Engine.time + 1.0f;
 
     if (int(g_EngineFuncs.CVarGetFloat("mp_dropweapons")) == 0)
@@ -342,19 +339,21 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
     // This will be null when dropweapons is disabled
     if (m_pPlayer.DropItem(GetName()) !is null)
     {
+      SetThink(ThinkFunction(DummyThink));
+      pev.nextthink = g_Engine.time + 0.15f;
+      SetTouch(TouchFunction(ThrowTouch));
+
       g_EntityFuncs.SetOrigin(self, vecSrc);
       pev.velocity = g_Engine.v_forward * 1200.0f + g_Engine.v_up * 2.53f;
       pev.angles = Math.VecToAngles(pev.velocity.Normalize());
       pev.angles.z -= 90.0f;
       pev.avelocity = Vector(-800.0f, 0.0f, 0.0f);
+      pev.movetype = MOVETYPE_BOUNCE;
+      pev.solid = SOLID_BBOX;
       pev.effects &= ~EF_NODRAW;
       pev.friction = 0.3f;
       @pev.owner = pOwner.edict();
       pev.spawnflags |= SF_DODAMAGE;
-
-      SetThink(ThinkFunction(DummyThink));
-      pev.nextthink = g_Engine.time + 0.1f;
-      SetTouch(TouchFunction(ThrowTouch));
     }
   }
 
@@ -364,17 +363,25 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
 
     if ((pev.flags & FL_ONGROUND) != 0)
     {
+      Math.MakeVectors(pev.angles);
+      pev.angles.y = Math.VecToAngles(g_Engine.v_forward).y;
+
       // lie flat
       pev.angles.x = 0.0f;
       pev.angles.z = 0.0f;
 
-      SetThink(null); // SetThink(CBasePlayerItem::FallThink);
-      pev.nextthink = g_Engine.time + 0.1f;
+      // This is equivalent to
+      // SetThink( &CBasePlayerItem::FallThink );
+      // Why? No idea... but it seems that the same applies for Touch
+      SetThink(null);
     }
   }
 
   void ThrowTouch(CBaseEntity@ pOther)
   {
+    if (pOther.pev.ClassNameIs(pev.classname))
+      return;
+
     // Don't set Touch to DefaultTouch because later
     // when the surface is a lift we will not clank on bounce
     if (pev.velocity.Length() < 10.0f)
@@ -386,15 +393,12 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
     // add a bit of static friction
     pev.velocity = pev.velocity * 0.5f;
     pev.avelocity = pev.avelocity * 0.5f;
+    pev.angles.z = 0.0f;
 
     if ((pev.spawnflags & SF_DODAMAGE) != 0)
     {
-      pev.spawnflags &= ~SF_DODAMAGE;
-
-      Vector forward;
-      g_EngineFuncs.AngleVectors(pev.angles, forward, void, void);
-      g_EngineFuncs.VecToAngles(forward, pev.angles);
       pev.angles.z = 320.0f;
+      pev.spawnflags &= ~SF_DODAMAGE;
 
       TraceResult tr = g_Utility.GetGlobalTrace();
       entvars_t@ pevOwner = @pev.owner.vars;
@@ -407,7 +411,7 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
         // AdamR: End
 
         g_WeaponFuncs.ClearMultiDamage();
-        pOther.TraceAttack(pevOwner, flDamage, g_Engine.v_forward, tr, DMG_CLUB);
+        pOther.TraceAttack(pevOwner, flDamage * 2.0f, g_Engine.v_forward, tr, DMG_CLUB);
         g_WeaponFuncs.ApplyMultiDamage(pev, pevOwner);
       }
 
@@ -429,55 +433,55 @@ class weapon_ofknife : ScriptBasePlayerWeaponEntity
         }
       }
 
-      g_Utility.TraceLine(pev.origin, pev.origin - Vector(0.0f, 0.0f, 10.0f), ignore_monsters, self.edict(), tr);
+      g_Utility.TraceLine(pev.origin, pev.origin - Vector(0.0f, 0.0f, 5.0f), ignore_monsters, self.edict(), tr);
       if (pOther.pev.ClassNameIs("worldspawn") && tr.flFraction >= 1.0f)
       {
-        // if what we hit is static architecture, can stay around for a while.
         SetThink(ThinkFunction(DummyThink));
         pev.nextthink = g_Engine.time + 0.1f;
-        SetTouch(null); // SetTouch(CBasePlayerItem::DefaultTouch);
+        SetTouch(TouchFunction(DummyTouch));
 
-        Vector vecAng = pev.angles;
+        // if what we hit is static architecture, can stay around for a while.
         Vector vecDir = pev.velocity.Normalize();
-        g_EntityFuncs.SetOrigin(self, pev.origin - vecDir * 1.0f);
+        g_EntityFuncs.SetOrigin(self, pev.origin + vecDir * -5.0f);
+
         pev.angles = Math.VecToAngles(vecDir);
         pev.angles.z -= 90.0f;
         pev.movetype = MOVETYPE_FLY;
         pev.velocity = g_vecZero;
         pev.avelocity = g_vecZero;
 
-        vecDir = (Vector(0.0f, 0.0f, 1.0f) + vecDir * -1.0f).Normalize();
-        @m_schUnstuckMe = @g_Scheduler.SetTimeout(@this, "UnstuckThrow", 5.0f, vecDir, vecAng);
+        @m_schUnstuckMe = @g_Scheduler.SetTimeout(@this, "UnstuckThrow", 0.3f, vecDir * -1.0f);
       }
       else
       {
         SetThink(ThinkFunction(ThrowThink));
         pev.nextthink = g_Engine.time + 0.1f;
-
-        pev.movetype = MOVETYPE_BOUNCE;
-        self.Touch(pOther);
       }
+      return;
     }
-    else
+
+    if (pOther.IsBSPModel())
       g_SoundSystem.EmitSoundDyn(self.edict(), CHAN_VOICE, "debris/metal2.wav", 1.0f, ATTN_NORM, 0, 95 + Math.RandomLong(0, 29));
   }
 
-  void UnstuckThrow(Vector vecDir, Vector vecAng)
+  void UnstuckThrow(Vector vecDir)
   {
-    pev.angles = vecAng;
-    pev.movetype = MOVETYPE_BOUNCE;
-    pev.velocity = vecDir * 32.0f;
-    pev.avelocity = Vector(80.0f, 0.0f, 0.0f);
-
     SetThink(ThinkFunction(ThrowThink));
     pev.nextthink = g_Engine.time + 0.1f;
     SetTouch(TouchFunction(ThrowTouch));
+
+    pev.velocity = vecDir * 64.0f;
+    pev.avelocity = Vector(200.0f, 0.0f, 0.0f);
+    pev.movetype = MOVETYPE_BOUNCE;
 
     g_Scheduler.RemoveTimer(m_schUnstuckMe);
     @m_schUnstuckMe = @null;
   }
 
-  void DummyThink() { } // Guess why this exists? :D
+  // Guess why these exists? :D
+  void DummyThink() { }
+
+  void DummyTouch(CBaseEntity@ pOther) { }
   // THROW LOGIC ENDS HERE!!!
 }
 
