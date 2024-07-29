@@ -16,6 +16,7 @@ enum shockrifle_e
 
 // Weapon information
 const int MAX_CARRY    = 100;
+const int MAX_CLIP     = WEAPON_NOCLIP;
 const int DEFAULT_GIVE = MAX_CARRY;
 const int WEIGHT       = 15;
 
@@ -54,12 +55,23 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
     g_Game.PrecacheModel("sprites/lgtning.spr");
 
     g_SoundSystem.PrecacheSound("weapons/shock_fire.wav");
-    g_SoundSystem.PrecacheSound("weapons/shock_draw.wav"); // default viewmodel; sequence: 2; frame: 1; event 5004
+    g_SoundSystem.PrecacheSound("weapons/shock_draw.wav"); // sequence: 2; frame: 1; event 5004
     g_SoundSystem.PrecacheSound("weapons/shock_recharge.wav");
     g_SoundSystem.PrecacheSound("weapons/shock_discharge.wav");
 
     g_Game.PrecacheOther("shock_beam");
     g_Game.PrecacheGeneric("sprites/opfor/" + pev.classname + ".txt");
+  }
+
+  bool AddToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (!BaseClass.AddToPlayer(pPlayer))
+      return false;
+
+    NetworkMessage weapon(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
+      weapon.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
+    weapon.End();
+    return true;
   }
 
   bool GetItemInfo(ItemInfo& out info)
@@ -68,32 +80,13 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
     info.iMaxAmmo2 = -1;
     info.iAmmo1Drop = -1;
     info.iAmmo2Drop = -1;
-    info.iMaxClip = WEAPON_NOCLIP;
+    info.iMaxClip = MAX_CLIP;
     info.iFlags = ITEM_FLAG_NOAUTORELOAD | ITEM_FLAG_NOAUTOSWITCHEMPTY;
     info.iSlot = 6;
     info.iPosition = 3;
     info.iId = g_ItemRegistry.GetIdForName(pev.classname);
     info.iWeight = 15;
     return true;
-  }
-
-  bool AddToPlayer(CBasePlayer@ pPlayer)
-  {
-    if (!BaseClass.AddToPlayer(pPlayer))
-      return false;
-
-    NetworkMessage message(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
-      message.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
-    message.End();
-    return true;
-  }
-
-  void AttachToPlayer(CBasePlayer@ pPlayer)
-  {
-    if (self.m_iDefaultAmmo == 0)
-      self.m_iDefaultAmmo = 1;
-    
-    BaseClass.AttachToPlayer(pPlayer);
   }
 
   bool CanDeploy()
@@ -105,7 +98,7 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
   {
     m_flRechargeTime = g_Engine.time + (g_ShockRifleFast.GetBool() ? 0.25f : 0.5f);
     self.DefaultDeploy(self.GetV_Model("models/v_shock.mdl"), self.GetP_Model("models/p_shock.mdl"), DRAW, "bow");
-    self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
+    self.m_flNextPrimaryAttack = self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
     return true;
   }
 
@@ -117,13 +110,26 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
     BaseClass.Holster(skiplocal);
   }
 
+  void InactiveItemPostFrame()
+  {
+    RechargeAmmo(false);
+    BaseClass.InactiveItemPostFrame();
+  }
+
+  void AttachToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (self.m_iDefaultAmmo == 0)
+      self.m_iDefaultAmmo = 1;
+
+    BaseClass.AttachToPlayer(pPlayer);
+  }
+
   void PrimaryAttack()
   {
     if (m_pPlayer.pev.waterlevel == WATERLEVEL_HEAD)
     {
       // Water goes zap.
-      const float flVolume = Math.RandomFloat(0.8f, 0.9f);
-      g_SoundSystem.EmitSound(m_pPlayer.edict(), CHAN_ITEM, "weapons/shock_discharge.wav", flVolume, ATTN_NONE);
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_ITEM, "weapons/shock_discharge.wav", Math.RandomFloat(0.8f, 0.9f), ATTN_NONE, 0, PITCH_NORM);
 
       const int ammoCount = m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType);
       g_WeaponFuncs.RadiusDamage(pev.origin, m_pPlayer.pev, m_pPlayer.pev, ammoCount * 100.0f, ammoCount * 150.0f, CLASS_NONE, DMG_ALWAYSGIB | DMG_BLAST);
@@ -141,8 +147,12 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
 
     m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) - 1);
 
-    m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
-    pev.effects |= EF_MUZZLEFLASH;
+    NetworkMessage muzzle(MSG_PVS, NetworkMessages::ShkFlash, pev.origin);
+      muzzle.WriteCoord(pev.origin.x);
+      muzzle.WriteCoord(pev.origin.y);
+      muzzle.WriteCoord(pev.origin.z);
+      muzzle.WriteByte(0);
+    muzzle.End();
 
     m_pPlayer.SetAnimation(PLAYER_ATTACK1);
 
@@ -150,13 +160,37 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
 
     Vector vecAnglesAim = m_pPlayer.pev.v_angle + m_pPlayer.pev.punchangle;
     Math.MakeVectors(vecAnglesAim);
-    Vector vecSrc = m_pPlayer.GetGunPosition() + g_Engine.v_forward * 16.0f + g_Engine.v_right * 9.0f + g_Engine.v_up * -7.0f;
+    Vector vecSrc = m_pPlayer.GetGunPosition() + (g_Engine.v_forward * 16.0f) + (g_Engine.v_right * 9.0f) + (g_Engine.v_up * -7.0f);
     // m_pPlayer.GetAutoaimVectorFromPoint(vecSrc, AUTOAIM_10DEGREES); // Update auto-aim
 
-    CreateShockBeam(vecSrc, vecAnglesAim, m_pPlayer);
+    // CShockBeam::CreateShockBeam(const Vector& vecOrigin, const Vector& vecAngles, CBaseEntity* pOwner)
+    vecAnglesAim.x = -vecAnglesAim.x;
+    CBaseEntity@ pBeam = g_EntityFuncs.Create("shock_beam", vecSrc, vecAnglesAim, true, m_pPlayer.edict());
+    pBeam.pev.velocity = g_Engine.v_forward * 2000.0f;
+    g_EntityFuncs.DispatchSpawn(pBeam.edict());
 
     self.SendWeaponAnim(FIRE);
     g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/shock_fire.wav", 0.9f, ATTN_NORM, 0, PITCH_NORM);
+
+    for (uint uiIndex = 0; uiIndex < 3; ++uiIndex)
+    {
+      NetworkMessage beam(MSG_PVS, NetworkMessages::SVC_TEMPENTITY, pev.origin);
+        beam.WriteByte(TE_BEAMENTS);
+        beam.WriteShort(m_pPlayer.entindex() | 0x1000);
+        beam.WriteShort(m_pPlayer.entindex() | ((uiIndex + 2) << 12));
+        beam.WriteShort(g_EngineFuncs.ModelIndex("sprites/lgtning.spr"));
+        beam.WriteByte(0);
+        beam.WriteByte(10);
+        beam.WriteByte(1); // 0.8f
+        beam.WriteByte(10);
+        beam.WriteByte(75);
+        beam.WriteByte(0);
+        beam.WriteByte(253);
+        beam.WriteByte(253);
+        beam.WriteByte(190);
+        beam.WriteByte(30);
+      beam.End();
+    }
 
     self.m_flNextPrimaryAttack = g_Engine.time + (g_ShockRifleFast.GetBool() ? 0.1f : 0.2f);
     self.m_flTimeWeaponIdle = g_Engine.time + 0.33f;
@@ -173,75 +207,23 @@ class weapon_ofshockrifle : ScriptBasePlayerWeaponEntity
       return;
 
     float flRand = g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 0.0f, 1.0f);
-    if (flRand <= 0.75f)
-    {
-      self.SendWeaponAnim(IDLE3);
-      self.m_flTimeWeaponIdle = g_Engine.time + 51.0f / 15.0f;
-    }
-    else
-    {
-      self.SendWeaponAnim(IDLE1);
-      self.m_flTimeWeaponIdle = g_Engine.time + 101.0f / 30.0f;
-    }
-  }
-
-  void InactiveItemPostFrame()
-  {
-    RechargeAmmo(false);
-    BaseClass.InactiveItemPostFrame();
+    self.SendWeaponAnim((flRand <= 0.75f) ? IDLE3 : IDLE1);
+    self.m_flTimeWeaponIdle = g_Engine.time + 3.33f;
   }
 
   private void RechargeAmmo(bool bLoud)
   {
-    int ammoCount = m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType);
-
-    while (ammoCount < DEFAULT_GIVE && m_flRechargeTime < g_Engine.time)
+    int iAmmoCount = m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType);
+    while (iAmmoCount < MAX_CARRY && m_flRechargeTime < g_Engine.time)
     {
-      ++ammoCount;
+      ++iAmmoCount;
 
       if (bLoud)
-        g_SoundSystem.EmitSound(m_pPlayer.edict(), CHAN_WEAPON, "weapons/shock_recharge.wav", VOL_NORM, ATTN_NORM);
+        g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/shock_recharge.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
 
       m_flRechargeTime += (g_ShockRifleFast.GetBool() ? 0.25f : 0.5f);
     }
-
-    m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, ammoCount);
-  }
-
-  // CShockBeam::CreateShockBeam(const Vector& vecOrigin, const Vector& vecAngles, CBaseEntity* pOwner)
-  private void CreateShockBeam(const Vector& in vecOrigin, const Vector& in vecAngles, CBaseEntity@ pOwner)
-  {
-    CBaseEntity@ pBeam = g_EntityFuncs.CreateEntity("shock_beam", null, false);
-    pBeam.pev.angles = vecAngles;
-    pBeam.pev.angles.x = -pBeam.pev.angles.x;
-    g_EntityFuncs.SetOrigin(pBeam, vecOrigin);
-
-    Math.MakeVectors(pBeam.pev.angles);
-    pBeam.pev.velocity = g_Engine.v_forward * 2000.0f;
-    pBeam.pev.velocity.z = -pBeam.pev.velocity.z;
-
-    g_EntityFuncs.DispatchSpawn(pBeam.edict());
-    @pBeam.pev.owner = @pOwner.edict();
-
-    for (uint uiIndex = 0; uiIndex < 3; ++uiIndex)
-    {
-      NetworkMessage message(MSG_ALL, NetworkMessages::SVC_TEMPENTITY);
-        message.WriteByte(TE_BEAMENTS);
-        message.WriteShort(m_pPlayer.entindex() | 0x1000);
-        message.WriteShort(m_pPlayer.entindex() | ((uiIndex + 2) << 12));
-        message.WriteShort(g_EngineFuncs.ModelIndex("sprites/lgtning.spr"));
-        message.WriteByte(0);
-        message.WriteByte(10);
-        message.WriteByte(1); // 0.8f
-        message.WriteByte(10);
-        message.WriteByte(75);
-        message.WriteByte(0);
-        message.WriteByte(253);
-        message.WriteByte(253);
-        message.WriteByte(190);
-        message.WriteByte(30);
-      message.End();
-    }
+    m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType, iAmmoCount);
   }
 }
 

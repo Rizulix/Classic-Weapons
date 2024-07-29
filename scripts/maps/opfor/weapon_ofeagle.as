@@ -34,13 +34,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     set       { self.m_hPlayer = EHandle(@value); }
   }
   private EHandle m_hLaser; // Yeah... no custom eagle_laser (laser_spot)
-  private CBaseEntity@ m_pLaser
-  {
-    get const { return m_hLaser.GetEntity(); }
-    set       { m_hLaser = EHandle(@value); }
-  }
   private bool m_bLaserActive;
-  private bool m_bSpotVisible;
   private int m_iShell;
 
   void Spawn()
@@ -67,10 +61,21 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     g_SoundSystem.PrecacheSound("weapons/desert_eagle_sight.wav");
     g_SoundSystem.PrecacheSound("weapons/desert_eagle_sight2.wav");
     g_SoundSystem.PrecacheSound("hlclassic/weapons/357_cock1.wav");
-    g_SoundSystem.PrecacheSound("hlclassic/weapons/desert_eagle_reload.wav"); // default viewmodel; sequence: 7, 8; frame: 1; event 5004
+    g_SoundSystem.PrecacheSound("hlclassic/weapons/desert_eagle_reload.wav"); // sequence: 7, 8; frame: 1; event 5004
     g_Game.PrecacheGeneric("sound/hlclassic/weapons/desert_eagle_reload.wav");
 
     g_Game.PrecacheGeneric("sprites/opfor/" + pev.classname + ".txt");
+  }
+
+  bool AddToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (!BaseClass.AddToPlayer(pPlayer))
+      return false;
+
+    NetworkMessage weapon(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
+      weapon.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
+    weapon.End();
+    return true;
   }
 
   bool GetItemInfo(ItemInfo& out info)
@@ -88,48 +93,40 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     return true;
   }
 
-  bool AddToPlayer(CBasePlayer@ pPlayer)
-  {
-    if (!BaseClass.AddToPlayer(pPlayer))
-      return false;
-
-    NetworkMessage message(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
-      message.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
-    message.End();
-    return true;
-  }
-
-  bool PlayEmptySound()
-  {
-    if (self.m_bPlayEmptySound)
-    {
-      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "hlclassic/weapons/357_cock1.wav", 0.8f, 0, PITCH_NORM);
-      self.m_bPlayEmptySound = false;
-      return false;
-    }
-    return false;
-  }
-
   bool Deploy()
   {
-    m_bSpotVisible = true;
+    if (m_bLaserActive)
+    {
+      GetLaserSpot().pev.effects &= ~EF_NODRAW;
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+    }
+
     self.DefaultDeploy(self.GetV_Model("models/hlclassic/v_desert_eagle.mdl"), self.GetP_Model("models/hlclassic/p_desert_eagle.mdl"), DRAW, "onehanded");
-    self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
+    self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
     return true;
   }
 
   void Holster(int skiplocal = 0)
   {
     SetThink(null);
-
-    if (m_pLaser !is null)
-    {
-      m_pLaser.Killed(null, GIB_NEVER);
-      @m_pLaser = null;
-      m_bSpotVisible = false;
-    }
-
+    GetLaserSpot().pev.effects |= EF_NODRAW;
     BaseClass.Holster(skiplocal);
+  }
+
+  void ItemPostFrame()
+  {
+    BaseClass.ItemPostFrame();
+    UpdateLaser();
+  }
+
+  bool PlayEmptySound()
+  {
+    if (self.m_bPlayEmptySound)
+    {
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "hlclassic/weapons/357_cock1.wav", 0.8f, ATTN_NORM, 0, PITCH_NORM);
+      self.m_bPlayEmptySound = false;
+    }
+    return false;
   }
 
   void PrimaryAttack()
@@ -161,9 +158,9 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
     m_pPlayer.SetAnimation(PLAYER_ATTACK1);
 
-    if (m_pLaser !is null && m_bLaserActive)
+    if (m_bLaserActive)
     {
-      m_pLaser.pev.effects |= EF_NODRAW;
+      GetLaserSpot().pev.effects |= EF_NODRAW;
       SetThink(ThinkFunction(LaserRevive));
       pev.nextthink = g_Engine.time + 0.6f;
     }
@@ -172,21 +169,20 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     Vector vecSrc = m_pPlayer.GetGunPosition();
     Vector vecAiming = m_pPlayer.GetAutoaimVector(AUTOAIM_10DEGREES);
 
-    const float flSpread = m_bLaserActive ? 0.001f : 0.1f;
+    float flSpread = m_bLaserActive ? 0.001f : 0.1f;
     self.FireBullets(1, vecSrc, vecAiming, Vector(flSpread, flSpread, flSpread), 8192.0f, BULLET_PLAYER_EAGLE, 0, 0, m_pPlayer.pev);
 
     self.SendWeaponAnim((self.m_iClip <= 0) ? SHOOT_EMPTY : SHOOT);
     g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_fire.wav", Math.RandomFloat(0.92f, 1.0f), ATTN_NORM, 0, 98 + Math.RandomLong(0, 3));
     m_pPlayer.pev.punchangle.x = -4.0f;
 
-    // GetDefaultShellInfo(ShellVelocity, ShellOrigin, -9.0f, 14.0f, 9.0f);
-    Vector velocity, origin, forward, right, up;
-    g_EngineFuncs.AngleVectors(m_pPlayer.pev.angles, forward, right, up);
-    const float fR = Math.RandomFloat(50.0f, 70.0f);
-    const float fU = Math.RandomFloat(100.0f, 150.0f);
-    velocity = m_pPlayer.pev.velocity + forward * 25.0 + up * fU + right * fR;
-    origin = m_pPlayer.pev.origin + m_pPlayer.pev.view_ofs + forward * 14.0f + up * -10.0f + right * 8.0f;
-    g_EntityFuncs.EjectBrass(origin, velocity, m_pPlayer.pev.angles.y, m_iShell, TE_BOUNCE_SHELL);
+    // GetDefaultShellInfo(origin, velocity, -9.0f, 9.0f, 14.0f);
+    Math.MakeVectors(m_pPlayer.pev.v_angle);
+    float fR = Math.RandomFloat(50.0f, 70.0f);
+    float fU = Math.RandomFloat(100.0f, 150.0f);
+    Vector vecOrigin = m_pPlayer.GetGunPosition() + (g_Engine.v_forward * 14.0f) + (g_Engine.v_right * 8.0f) + (g_Engine.v_up * -10.0f);
+    Vector vecVelocity = m_pPlayer.pev.velocity + (g_Engine.v_forward * 25.0f) + (g_Engine.v_right * fR) + (g_Engine.v_up * fU);
+    g_EntityFuncs.EjectBrass(vecOrigin, vecVelocity, m_pPlayer.pev.angles.y, m_iShell, TE_BOUNCE_SHELL);
 
     if (self.m_iClip <= 0 && m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
       m_pPlayer.SetSuitUpdate("!HEV_AMO0", false, 0);
@@ -199,14 +195,15 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
   {
     m_bLaserActive = !m_bLaserActive;
 
-    if (!m_bLaserActive)
+    if (m_bLaserActive)
     {
-      if (m_pLaser !is null)
-      {
-        m_pLaser.Killed(null, GIB_NEVER);
-        @m_pLaser = null;
-        g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight2.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
-      }
+      GetLaserSpot().pev.effects &= ~EF_NODRAW;
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+    }
+    else
+    {
+      GetLaserSpot().pev.effects |= EF_NODRAW;
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight2.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
     }
 
     self.m_flNextSecondaryAttack = g_Engine.time + 0.5f;
@@ -218,12 +215,12 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
       return;
 
     // Only turn it off if we're actually reloading
-    if (m_pLaser !is null && m_bLaserActive)
+    if (m_bLaserActive)
     {
-      m_pLaser.pev.effects |= EF_NODRAW;
+      GetLaserSpot().pev.effects |= EF_NODRAW;
+      self.m_flNextSecondaryAttack = g_Engine.time + 1.5f;
       SetThink(ThinkFunction(LaserRevive));
       pev.nextthink = g_Engine.time + 1.6f;
-      self.m_flNextSecondaryAttack = g_Engine.time + 1.5f;
     }
 
     self.DefaultReload(MAX_CLIP, (self.m_iClip <= 0) ? RELOAD : RELOAD_NOSHOT, 1.5f);
@@ -260,69 +257,57 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
         self.SendWeaponAnim(IDLE1);
         self.m_flTimeWeaponIdle = g_Engine.time + 2.5f;
       }
+      else if (flRand > 0.6f)
+      {
+        self.SendWeaponAnim(IDLE3);
+        self.m_flTimeWeaponIdle = g_Engine.time + 1.633f;
+      }
       else
       {
-        if (flRand > 0.6f)
-        {
-          self.SendWeaponAnim(IDLE3);
-          self.m_flTimeWeaponIdle = g_Engine.time + 1.633f;
-        }
-        else
-        {
-          self.SendWeaponAnim(IDLE2);
-          self.m_flTimeWeaponIdle = g_Engine.time + 2.5f;
-        }
+        self.SendWeaponAnim(IDLE2);
+        self.m_flTimeWeaponIdle = g_Engine.time + 2.5f;
       }
     }
-  }
-
-  void ItemPostFrame()
-  {
-    UpdateLaser();
-    BaseClass.ItemPostFrame();
   }
 
   private void UpdateLaser()
   {
-    if (m_bLaserActive && m_bSpotVisible)
-    {
-      if (m_pLaser is null)
-      {
-        /*@m_pLaser = */CreateLaserSpot();
-        g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
-      }
+    if (!m_bLaserActive)
+      return;
 
-      Math.MakeVectors(m_pPlayer.pev.v_angle);
-      Vector vecSrc = m_pPlayer.GetGunPosition();
-      Vector vecEnd = vecSrc + g_Engine.v_forward * 8192.0f;
+    Math.MakeVectors(m_pPlayer.pev.v_angle);
+    Vector vecSrc = m_pPlayer.GetGunPosition();
+    Vector vecEnd = vecSrc + (g_Engine.v_forward * 8192.0f);
 
-      TraceResult tr;
-      g_Utility.TraceLine(vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr);
-      g_EntityFuncs.SetOrigin(m_pLaser, tr.vecEndPos);
-    }
+    TraceResult tr;
+    g_Utility.TraceLine(vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr);
+    g_EntityFuncs.SetOrigin(GetLaserSpot(), tr.vecEndPos);
   }
 
-  // COFEagleLaser::CreateSpot()
-  private void CreateLaserSpot()
-  {
-    @m_pLaser = g_EntityFuncs.Create("info_target", g_vecZero, g_vecZero, false);
-    m_pLaser.pev.movetype = MOVETYPE_NONE;
-    m_pLaser.pev.solid = SOLID_NOT;
-    m_pLaser.pev.rendermode = kRenderGlow;
-    m_pLaser.pev.renderfx = kRenderFxNoDissipation;
-    m_pLaser.pev.renderamt = 255.0f;
-    g_EntityFuncs.SetModel(m_pLaser, "sprites/laserdot.spr");
-    m_pLaser.pev.scale = 0.5f;
-    return;
-  }
-
-  // COFEagleLaser::Revive()
+  // CEagleLaser::Revive()
   private void LaserRevive()
   {
     SetThink(null);
+    GetLaserSpot().pev.effects &= ~EF_NODRAW;
+  }
 
-    if (m_pLaser !is null)
-      m_pLaser.pev.effects &= ~EF_NODRAW;
+  // Instead of creating/removing in Holster, Deploy, SecondaryAttack
+  // only creates a new one if the previous one was somehow deleted
+  private CBaseEntity@ GetLaserSpot()
+  {
+    if (!m_hLaser)
+    {
+      m_hLaser = EHandle(g_EntityFuncs.CreateEntity("info_target", null, false));
+      g_EntityFuncs.SetModel(m_hLaser.GetEntity(), "sprites/laserdot.spr");
+      m_hLaser.GetEntity().pev.movetype = MOVETYPE_NONE;
+      m_hLaser.GetEntity().pev.solid = SOLID_NOT;
+      m_hLaser.GetEntity().pev.scale = 0.5f;
+      m_hLaser.GetEntity().pev.rendermode = kRenderGlow;
+      m_hLaser.GetEntity().pev.renderamt = 255.0f;
+      m_hLaser.GetEntity().pev.renderfx = kRenderFxNoDissipation;
+      g_EntityFuncs.DispatchSpawn(m_hLaser.GetEntity().edict());
+    }
+    return m_hLaser.GetEntity();
   }
 }
 

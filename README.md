@@ -8,7 +8,7 @@
 
 2. Register the new weapons in your mapscript:
 
-	1. In your mapscript header add `#include "classic_weapons"` or add `map_script classic_weapons` in your map cfg.
+	1. In your mapscript header add `#include "ClassicWeapons"` or add `map_script ClassicWeapons` in your map cfg.
 	2. Inside your `MapInit()` function add `CLASSIC_WEAPONS::Register();`.
 
 3. To play with the new weapons place them in the map or give it yourself with `give <weapon_name>` command **OR** consider using Outerbeast's [info_itemswap](https://github.com/Outerbeast/Entities-and-Gamemodes/blob/master/info_itemswap.as) (instructions on how to use there).
@@ -22,10 +22,12 @@
 	- weapon_ofpenguin
 	- weapon_ofshockrifle
 	- weapon_ofsniperrifle
+	- weapon_ofsporelauncher
 
 ## Notes
 
-- The max ammo for the M249 and the ShockRifle are the same as those of the Sven Co-op version to avoid overwriting the weapon's default values.
+- The max ammo for the M249, ShockRifle and SporeLauncher are the same as those of the Sven Co-op version to avoid overwriting the weapon's default values.
+- The damage of the SporeLauncher has to be regulated by the `skill.cfg` because it does generic damage (not poison) otherwise it will be too broken.
 
 ## Console Variables
 
@@ -50,3 +52,7 @@ Change its value with `as_command` e.g.:
 * Code format based on [KernCore's Custom Weapon Projects](https://github.com/KernCore91#sven-co-op-plugins).
 
 * All weapons code was ported/based from SamVanheer's [Half-Life Unified SDK](https://github.com/SamVanheer/halflife-unified-sdk), [Half-Life Updated](https://github.com/SamVanheer/halflife-updated) and [Half-Life Op4 Updated](https://github.com/SamVanheer/halflife-op4-updated).
+
+## Special Thanks
+
+* Buran, testing and suggestions for project changes.

@@ -5,6 +5,7 @@
 #include "opfor/weapon_ofpenguin"
 #include "opfor/weapon_ofshockrifle"
 #include "opfor/weapon_ofsniperrifle"
+#include "opfor/weapon_ofsporelauncher"
 
 namespace CLASSIC_WEAPONS
 {
@@ -18,6 +19,7 @@ void Register()
   COFPenguin::Register();
   COFShockRifle::Register();
   COFSniperRifle::Register();
+  COFSporeLauncher::Register();
 }
 
 }

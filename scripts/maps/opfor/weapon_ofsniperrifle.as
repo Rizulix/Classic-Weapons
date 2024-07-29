@@ -31,7 +31,6 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     get const { return cast<CBasePlayer>(self.m_hPlayer.GetEntity()); }
     set       { self.m_hPlayer = EHandle(@value); }
   }
-  private bool m_fInSpecialReload;
 
   void Spawn()
   {
@@ -39,8 +38,6 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     g_EntityFuncs.SetModel(self, self.GetW_Model("models/hlclassic/w_m40a1.mdl"));
     self.m_iDefaultAmmo = DEFAULT_GIVE;
     self.FallInit();
-
-    m_fInSpecialReload = false;
   }
 
   void Precache()
@@ -54,16 +51,27 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     g_SoundSystem.PrecacheSound("hlclassic/weapons/357_cock1.wav");
     g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_fire.wav");
     g_Game.PrecacheGeneric("sound/hlclassic/weapons/sniper_fire.wav");
-    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_bolt1.wav"); // default viewmodel; sequence: 2; frame: 32; event 5004
+    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_bolt1.wav"); // sequence: 2; frame: 32; event 5004
     g_Game.PrecacheGeneric("sound/hlclassic/weapons/sniper_bolt1.wav");
-    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_bolt2.wav"); // default viewmodel; sequence: 3; frame: 32; event 5004
+    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_bolt2.wav"); // sequence: 3; frame: 32; event 5004
     g_Game.PrecacheGeneric("sound/hlclassic/weapons/sniper_bolt2.wav");
-    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_reload_first_seq.wav"); // default viewmodel; sequence: 4, 6; frame: 1; event 5004
+    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_reload_first_seq.wav"); // sequence: 4, 6; frame: 1; event 5004
     g_Game.PrecacheGeneric("sound/hlclassic/weapons/sniper_reload_first_seq.wav");
-    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_reload_second_seq.wav"); // default viewmodel; sequence: 5; frame: 1; event 5004
+    g_SoundSystem.PrecacheSound("hlclassic/weapons/sniper_reload_second_seq.wav"); // sequence: 5; frame: 1; event 5004
     g_Game.PrecacheGeneric("sound/hlclassic/weapons/sniper_reload_second_seq.wav");
 
     g_Game.PrecacheGeneric("sprites/opfor/" + pev.classname + ".txt");
+  }
+
+  bool AddToPlayer(CBasePlayer@ pPlayer)
+  {
+    if (!BaseClass.AddToPlayer(pPlayer))
+      return false;
+
+    NetworkMessage weapon(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
+      weapon.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
+    weapon.End();
+    return true;
   }
 
   bool GetItemInfo(ItemInfo& out info)
@@ -81,15 +89,18 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     return true;
   }
 
-  bool AddToPlayer(CBasePlayer@ pPlayer)
+  bool Deploy()
   {
-    if (!BaseClass.AddToPlayer(pPlayer))
-      return false;
-
-    NetworkMessage message(MSG_ONE, NetworkMessages::WeapPickup, pPlayer.edict());
-      message.WriteLong(g_ItemRegistry.GetIdForName(pev.classname));
-    message.End();
+    self.DefaultDeploy(self.GetV_Model("models/hlclassic/v_m40a1.mdl"), self.GetP_Model("models/hlclassic/p_m40a1.mdl"), DRAW, "sniper");
+    self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
     return true;
+  }
+
+  void Holster(int skiplocal = 0)
+  {
+    SetThink(null);
+    self.SetFOV(0);
+    BaseClass.Holster(skiplocal);
   }
 
   bool PlayEmptySound()
@@ -98,26 +109,8 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     {
       g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "hlclassic/weapons/357_cock1.wav", 0.8f, ATTN_NORM, 0, PITCH_NORM);
       self.m_bPlayEmptySound = false;
-      return false;
     }
     return false;
-  }
-
-  bool Deploy()
-  {
-    self.DefaultDeploy(self.GetV_Model("models/hlclassic/v_m40a1.mdl"), self.GetP_Model("models/hlclassic/p_m40a1.mdl"), DRAW, "sniper");
-    self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
-    return true;
-  }
-
-  void Holster(int skiplocal = 0)
-  {
-    if (m_pPlayer.m_iFOV != 0)
-      SecondaryAttack();
-
-    SetThink(null);
-    m_fInSpecialReload = false;
-    BaseClass.Holster(skiplocal);
   }
 
   void PrimaryAttack()
@@ -139,9 +132,6 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 
     --self.m_iClip;
 
-    m_pPlayer.pev.effects |= EF_MUZZLEFLASH;
-    pev.effects |= EF_MUZZLEFLASH;
-
     m_pPlayer.SetAnimation(PLAYER_ATTACK1);
 
     Math.MakeVectors(m_pPlayer.pev.v_angle + m_pPlayer.pev.punchangle);
@@ -150,19 +140,23 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
 
     self.FireBullets(1, vecSrc, vecAiming, g_vecZero, 8192.0f, BULLET_PLAYER_SNIPER, 0, 0, m_pPlayer.pev);
 
-    self.SendWeaponAnim((self.m_iClip != 0) ? FIRE : FIRELASTROUND);
+    self.SendWeaponAnim((self.m_iClip <= 0) ? FIRELASTROUND : FIRE);
     g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "hlclassic/weapons/sniper_fire.wav", Math.RandomFloat(0.9f, 1.0f), ATTN_NORM, 0, 98 + Math.RandomLong(0, 3));
     m_pPlayer.pev.punchangle.x = -2.0f;
 
     if (self.m_iClip <= 0 && m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
       m_pPlayer.SetSuitUpdate("!HEV_AMO0", false, 0);
 
-    self.m_flTimeWeaponIdle = self.m_flNextPrimaryAttack = g_Engine.time + 2.0f;
+    self.m_flNextPrimaryAttack = self.m_flTimeWeaponIdle = g_Engine.time + 2.0f;
   }
 
   void SecondaryAttack()
   {
-    ToggleZoom();
+    bool fInZoom = m_pPlayer.m_iFOV != 0;
+
+    self.SetFOV(fInZoom ? 0 : 15);
+    m_pPlayer.m_szAnimExtension = fInZoom ? "sniper" : "sniperscope";
+
     self.m_flNextSecondaryAttack = g_Engine.time + 0.5f;
     g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_ITEM, "weapons/sniper_zoom.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
   }
@@ -172,22 +166,21 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     if (self.m_iClip == MAX_CLIP || m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
       return;
 
-    if (m_pPlayer.m_iFOV != 0)
-      ToggleZoom();
+    self.SetFOV(0);
+    m_pPlayer.m_szAnimExtension = "sniper";
 
-    if (self.m_iClip != 0)
+    if (self.m_iClip <= 0)
+    {
+      self.DefaultReload(MAX_CLIP, RELOAD1, 2.324f);
+      self.m_flNextPrimaryAttack = self.m_flTimeWeaponIdle = g_Engine.time + 4.102f;
+      SetThink(ThinkFunction(FinishAnim));
+      pev.nextthink = g_Engine.time + 2.324f;
+    }
+    else
     {
       self.DefaultReload(MAX_CLIP, RELOAD3, 2.324f);
       self.m_flTimeWeaponIdle = g_Engine.time + 4.102f;
     }
-    else
-    {
-      self.DefaultReload(MAX_CLIP, RELOAD1, 2.324f);
-      self.m_flTimeWeaponIdle = self.m_flNextPrimaryAttack = g_Engine.time + 4.102f;
-      SetThink(ThinkFunction(FinishAnim));
-      pev.nextthink = g_Engine.time + 2.324f;
-    }
-
     BaseClass.Reload();
   }
 
@@ -199,7 +192,7 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
     if (self.m_flTimeWeaponIdle > g_Engine.time)
       return;
 
-    self.SendWeaponAnim((self.m_iClip != 0) ? SLOWIDLE : SLOWIDLE2);
+    self.SendWeaponAnim((self.m_iClip <= 0) ? SLOWIDLE2 : SLOWIDLE);
     self.m_flTimeWeaponIdle = g_Engine.time + 4.348f;
   }
 
@@ -207,20 +200,6 @@ class weapon_ofsniperrifle : ScriptBasePlayerWeaponEntity
   {
     SetThink(null);
     self.SendWeaponAnim(RELOAD2);
-  }
-
-  private void ToggleZoom()
-  {
-    if (m_pPlayer.m_iFOV == 0)
-    {
-      m_pPlayer.m_iFOV = 18;
-      m_pPlayer.m_szAnimExtension = "sniperscope";
-    }
-    else
-    {
-      m_pPlayer.m_iFOV = 0;
-      m_pPlayer.m_szAnimExtension = "sniper";
-    }
   }
 }
 
