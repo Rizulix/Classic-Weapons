@@ -293,8 +293,8 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
   private void LaserDeploy()
   {
-    LaserRevive();
     UpdateLaser();
+    LaserRevive();
     g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
   }
 
