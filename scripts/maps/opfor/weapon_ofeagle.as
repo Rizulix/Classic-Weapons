@@ -97,8 +97,8 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
   {
     if (m_bLaserActive)
     {
-      GetLaserSpot().pev.effects &= ~EF_NODRAW;
-      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+      SetThink(ThinkFunction(LaserDeploy));
+      pev.nextthink = g_Engine.time + 0.5f;
     }
 
     self.DefaultDeploy(self.GetV_Model("models/hlclassic/v_desert_eagle.mdl"), self.GetP_Model("models/hlclassic/p_desert_eagle.mdl"), DRAW, "onehanded");
@@ -289,6 +289,13 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
   {
     SetThink(null);
     GetLaserSpot().pev.effects &= ~EF_NODRAW;
+  }
+
+  private void LaserDeploy()
+  {
+    LaserRevive();
+    UpdateLaser();
+    g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
   }
 
   // Instead of creating/removing in Holster, Deploy, SecondaryAttack
