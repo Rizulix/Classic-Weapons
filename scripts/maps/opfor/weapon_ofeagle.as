@@ -34,7 +34,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     set       { self.m_hPlayer = EHandle(@value); }
   }
   private EHandle m_hLaser; // Yeah... no custom eagle_laser (laser_spot)
-  private bool m_bLaserActive;
+  private int m_kLaserState; // 0: off, 1: on, 2: on (for deploy)
   private int m_iShell;
 
   void Spawn()
@@ -44,7 +44,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     self.m_iDefaultAmmo = DEFAULT_GIVE;
     self.FallInit();
 
-    m_bLaserActive = true; // Starts with the laser active as well as the SC version
+    m_kLaserState = 1; // Starts with the laser active as well as the SC version
   }
 
   void Precache()
@@ -95,11 +95,8 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
   bool Deploy()
   {
-    if (m_bLaserActive)
-    {
-      SetThink(ThinkFunction(LaserDeploy));
-      pev.nextthink = g_Engine.time + 0.5f;
-    }
+    if (m_kLaserState != 0)
+      m_kLaserState = 2;
 
     self.DefaultDeploy(self.GetV_Model("models/hlclassic/v_desert_eagle.mdl"), self.GetP_Model("models/hlclassic/p_desert_eagle.mdl"), DRAW, "onehanded");
     self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = self.m_flTimeWeaponIdle = g_Engine.time + 1.0f;
@@ -108,8 +105,8 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
   void Holster(int skiplocal = 0)
   {
-    SetThink(null);
-    GetLaserSpot().pev.effects |= EF_NODRAW;
+    m_pLaser.pev.dmgtime = 0.0f;
+    m_pLaser.pev.effects |= EF_NODRAW;
     BaseClass.Holster(skiplocal);
   }
 
@@ -158,18 +155,17 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
     m_pPlayer.SetAnimation(PLAYER_ATTACK1);
 
-    if (m_bLaserActive)
+    if (m_kLaserState != 0)
     {
-      GetLaserSpot().pev.effects |= EF_NODRAW;
-      SetThink(ThinkFunction(LaserRevive));
-      pev.nextthink = g_Engine.time + 0.6f;
+      m_pLaser.pev.effects |= EF_NODRAW;
+      m_pLaser.pev.dmgtime = g_Engine.time + 0.6f;
     }
 
     Math.MakeVectors(m_pPlayer.pev.v_angle + m_pPlayer.pev.punchangle);
     Vector vecSrc = m_pPlayer.GetGunPosition();
     Vector vecAiming = m_pPlayer.GetAutoaimVector(AUTOAIM_10DEGREES);
 
-    float flSpread = m_bLaserActive ? 0.001f : 0.1f;
+    float flSpread = (m_kLaserState != 0) ? 0.001f : 0.1f;
     self.FireBullets(1, vecSrc, vecAiming, Vector(flSpread, flSpread, flSpread), 8192.0f, BULLET_PLAYER_EAGLE, 0, 0, m_pPlayer.pev);
 
     self.SendWeaponAnim((self.m_iClip <= 0) ? SHOOT_EMPTY : SHOOT);
@@ -187,22 +183,22 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
     if (self.m_iClip <= 0 && m_pPlayer.m_rgAmmo(self.m_iPrimaryAmmoType) <= 0)
       m_pPlayer.SetSuitUpdate("!HEV_AMO0", false, 0);
 
-    self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = g_Engine.time + (m_bLaserActive ? 0.5f : 0.22f);
+    self.m_flNextPrimaryAttack = self.m_flNextSecondaryAttack = g_Engine.time + ((m_kLaserState != 0) ? 0.5f : 0.22f);
     self.m_flTimeWeaponIdle = g_Engine.time + g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 10.0f, 15.0f);
   }
 
   void SecondaryAttack()
   {
-    m_bLaserActive = !m_bLaserActive;
+    m_kLaserState = 1 - m_kLaserState;
 
-    if (m_bLaserActive)
+    if (m_kLaserState != 0)
     {
-      GetLaserSpot().pev.effects &= ~EF_NODRAW;
+      m_pLaser.pev.effects &= ~EF_NODRAW;
       g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
     }
     else
     {
-      GetLaserSpot().pev.effects |= EF_NODRAW;
+      m_pLaser.pev.effects |= EF_NODRAW;
       g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight2.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
     }
 
@@ -215,12 +211,11 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
       return;
 
     // Only turn it off if we're actually reloading
-    if (m_bLaserActive)
+    if (m_kLaserState != 0)
     {
-      GetLaserSpot().pev.effects |= EF_NODRAW;
+      m_pLaser.pev.effects |= EF_NODRAW;
+      m_pLaser.pev.dmgtime = g_Engine.time + 1.6f;
       self.m_flNextSecondaryAttack = g_Engine.time + 1.5f;
-      SetThink(ThinkFunction(LaserRevive));
-      pev.nextthink = g_Engine.time + 1.6f;
     }
 
     self.DefaultReload(MAX_CLIP, (self.m_iClip <= 0) ? RELOAD : RELOAD_NOSHOT, 1.5f);
@@ -237,7 +232,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
       return;
 
     float flRand = g_PlayerFuncs.SharedRandomFloat(m_pPlayer.random_seed, 0.0f, 1.0f);
-    if (m_bLaserActive)
+    if (m_kLaserState != 0)
     {
       if (flRand > 0.5f)
       {
@@ -272,7 +267,7 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
   private void UpdateLaser()
   {
-    if (!m_bLaserActive)
+    if (m_kLaserState == 0)
       return;
 
     Math.MakeVectors(m_pPlayer.pev.v_angle);
@@ -281,26 +276,25 @@ class weapon_ofeagle : ScriptBasePlayerWeaponEntity
 
     TraceResult tr;
     g_Utility.TraceLine(vecSrc, vecEnd, dont_ignore_monsters, m_pPlayer.edict(), tr);
-    g_EntityFuncs.SetOrigin(GetLaserSpot(), tr.vecEndPos);
-  }
+    g_EntityFuncs.SetOrigin(m_pLaser, tr.vecEndPos);
 
-  // CEagleLaser::Revive()
-  private void LaserRevive()
-  {
-    SetThink(null);
-    GetLaserSpot().pev.effects &= ~EF_NODRAW;
-  }
+    if (m_kLaserState == 2)
+    {
+      m_kLaserState = 1;
+      m_pLaser.pev.effects &= ~EF_NODRAW;
+      g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+    }
 
-  private void LaserDeploy()
-  {
-    UpdateLaser();
-    LaserRevive();
-    g_SoundSystem.EmitSoundDyn(m_pPlayer.edict(), CHAN_WEAPON, "weapons/desert_eagle_sight.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+    if (m_pLaser.pev.dmgtime != 0.0f && g_Engine.time > m_pLaser.pev.dmgtime)
+    {
+      m_pLaser.pev.dmgtime = 0.0f;
+      m_pLaser.pev.effects &= ~EF_NODRAW;
+    }
   }
 
   // Instead of creating/removing in Holster, Deploy, SecondaryAttack
   // only creates a new one if the previous one was somehow deleted
-  private CBaseEntity@ GetLaserSpot()
+  private CBaseEntity@ get_m_pLaser() property
   {
     if (!m_hLaser)
     {
